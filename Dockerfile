@@ -6,4 +6,5 @@ WORKDIR /app
 COPY . .
 
 RUN pip3 install -U pip && pip3 install --ignore-installed --no-cache-dir -U -r requirements.txt
+
 CMD ["bash", "start.sh"]
