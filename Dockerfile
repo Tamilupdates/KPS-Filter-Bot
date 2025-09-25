@@ -1,8 +1,10 @@
-FROM python:3.10.8-slim-buster
+FROM python:3.8-slim-buster
 
 WORKDIR /app
-COPY . .
 
-RUN pip3 install -U pip && pip3 install --ignore-installed --no-cache-dir -U -r requirements.txt
+COPY requirements.txt requirements.txt
+RUN pip3 install -r requirements.txt
+
+COPY . .
 
 CMD ["bash", "start.sh"]
