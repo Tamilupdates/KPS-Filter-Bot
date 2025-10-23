@@ -1,9 +1,24 @@
-<h1 align="center">
-  Auto Filter Bot
-</h1>
+<div align="center">
 
-![Typing SVG](https://readme-typing-svg.herokuapp.com/?lines=Welcome+To+Auto+Filter+Bot!)
-</p>
+# 🚀 KPS Filter Bot ⚡
+
+<a href="https://telegram.me/KPSBots"><img src="https://graph.org/file/0ff9d5e94a070fe4154c0.jpg" alt="KPSBots Logo" width="550"></a>
+
+![Typing SVG](https://readme-typing-svg.herokuapp.com/?lines=Welcome+To+KPS+Filter+Bot!)
+
+<!-- 🍴 Forks -->
+<a href="https://github.com/Tamilupdates/KPS-Filter-Bot/network/members"><img src="https://img.shields.io/github/forks/Tamilupdates/KPS-Filter-Bot?style=plastic&logo=git&logoColor=white&label=Forks&color=03A9F4&labelColor=0D47A1" alt="GitHub Forks"></a> <!-- ⭐ Stars --> <a href="https://github.com/Tamilupdates/KPS-Filter-Bot/stargazers"><img src="https://img.shields.io/github/stars/Tamilupdates/KPS-Filter-Bot?style=plastic&logo=github&logoColor=white&label=Stars&color=FBC02D&labelColor=424242" alt="GitHub Stars"></a> <!-- 🐞 Issues --> <a href="https://github.com/Tamilupdates/KPS-Filter-Bot/issues"><img src="https://img.shields.io/github/issues/Tamilupdates/KPS-Filter-Bot?style=plastic&logo=codecov&logoColor=white&label=Issues&color=E53935&labelColor=880E4F" alt="GitHub Issues"></a>
+  
+<!-- ⚡ PyroFork Framework -->
+<a href="https://github.com/Mayuri-Chan/pyrofork"><img src="https://img.shields.io/badge/PyroFork-FF9800?style=plastic&logo=python&logoColor=white&labelColor=212121" alt="PyroFork Framework"></a> <!-- 📜 License --> <a href="LICENSE"><img src="https://img.shields.io/github/license/Tamilupdates/KPS-Filter-Bot?style=plastic&label=License&color=4CAF50&logo=open-source-initiative&logoColor=white&labelColor=1B5E20" alt="License"></a>
+
+<!-- 💬 Telegram -->
+<a href="https://telegram.me/KPSBots"><img src="https://img.shields.io/badge/Join%20on%20Telegram-0088CC?style=plastic&logo=telegram&logoColor=white&labelColor=0A3D62" alt="Telegram Channel" width="170"></a>
+
+#### ***⚡ Ultimate Auto Filter Bot 🚀 For Telegram | Smart, Fast & Stream-Ready 🎬***
+</div>
+
+</div>
 
 ## Main Feature 
 <b>
@@ -113,13 +128,13 @@
 ### Optional Variables
 * <b>`PICS`: Telegraph links of images to show in start message.( Multiple images can be used separated by space )
 * `FILE_STORE_CHANNEL`: Channel from were file store links of posts should be made.Separate multiple IDs by space
-* Check [info.py](https://github.com/Tamilupdates/Latest-Filter-Bot/blob/main/info.py) for more optional variables.</b>
+* Check [info.py](https://github.com/Tamilupdates/KPS-Filter-Bot/blob/main/info.py) for more optional variables.</b>
 
 
 <details><summary><b>Deploy To Heroku</b></summary>
 <p>
 <br>
-<a href="https://heroku.com/deploy?template=https://github.com/Tamilupdates/Latest-Filter-Bot">
+<a href="https://heroku.com/deploy?template=https://github.com/Tamilupdates/KPS-Filter-Bot">
   <img src="https://www.herokucdn.com/deploy/button.svg" alt="Deploy To Heroku">
 </a>
 </p>
@@ -131,7 +146,7 @@
 <br>
 <br>
 
-[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=git&repository=github.com/Tamilupdates/Latest-Filter-Bot&branch=main&name=Latest-Filter-Bot)
+[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=git&repository=github.com/Tamilupdates/KPS-Filter-Bot&branch=main&name=Latest-Filter-Bot)
 </details>
 
 <details><summary><b>Deploy To Render</b></summary>
@@ -158,7 +173,7 @@ Use these settings when adding a monitor:</b>
 <b>Click on the below button to deploy directly to render ↓</b>
 <br>
 <br>
-<a href="https://render.com/deploy?repo=https://github.com/Tamilupdates/Latest-Filter-Bot/tree/main">
+<a href="https://render.com/deploy?repo=https://github.com/Tamilupdates/KPS-Filter-Bot/tree/main">
 <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render">
 </a>
 </details>
@@ -166,7 +181,7 @@ Use these settings when adding a monitor:</b>
 <details><summary><b>Deploy To VPS</summary>
 
 
-`git clone https://github.com/Tamilupdates/Latest-Filter-Bot`
+`git clone https://github.com/Tamilupdates/KPS-Filter-Bot kps-filter-bot && cd kps-filter-bot`
 
 Install Packages
 
@@ -190,9 +205,10 @@ Edit info.py with variables as given below then run bot
 
 ## Disclaimer
 [![GNU Affero General Public License 2.0](https://www.gnu.org/graphics/agplv3-155x51.png)](https://www.gnu.org/licenses/agpl-3.0.en.html#header)    
-<b>Licensed under [GNU AGPL 2.0.](https://github.com/Tamilupdates/Latest-Filter-Bot/blob/main/LICENSE)
+<b>Licensed under [GNU AGPL 2.0.](https://github.com/Tamilupdates/KPS-Filter-Bot/blob/main/LICENSE)
 Selling The Codes To Other People For Money Is *Strictly Prohibited*.</b>
 
 </pre>
 </p>
 </details>
+
