@@ -146,7 +146,7 @@
 <br>
 <br>
 
-[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=git&repository=github.com/Tamilupdates/KPS-Filter-Bot&branch=main&name=Latest-Filter-Bot)
+[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=git&repository=github.com/Tamilupdates/KPS-Filter-Bot&branch=main&name=KPS-Filter-Bot)
 </details>
 
 <details><summary><b>Deploy To Render</b></summary>

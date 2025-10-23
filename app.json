@@ -14,7 +14,7 @@
       "index",
       "inline"
     ],
-    "repository": "https://github.com/Tamilupdates/Latest-Filter-Bot",
+    "repository": "https://github.com/Tamilupdates/KPS-Filter-Bot",
     "env": {
         "CONFIG_FILE_URL": {
             "description": "Config File URL",
