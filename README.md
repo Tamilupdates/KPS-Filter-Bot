@@ -20,9 +20,11 @@
 #### ***⚡ Ultimate Auto Filter Bot 🚀 For Telegram | Smart, Fast & Stream-Ready 🎬***
 </div>
 
+---
+
 ## Main Feature 
 <b>
-  
+
 - [x] Clone Feature & On / Off
 - [x] Premium Plan Feature 
 - [x] Refer To Get Premium
@@ -221,6 +223,7 @@ Selling The Codes To Other People For Money Is *Strictly Prohibited*.</b>
 </pre>
 </p>
 </details>
+
 
 
 
