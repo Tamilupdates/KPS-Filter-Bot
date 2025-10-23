@@ -32,7 +32,7 @@
 - [x] Premium And Refer On / Off 
 - [x] Stream Feature On / Off 
 - [x] Url Shortner On / Off Feature 
-- [x] Pm Search On / Off
+- [x] PM Search On / Off
 - [x] Request To Join Force Subscribe With Auto File Send 
 - [x] Custom Stream
 - [x] Stream Feature With Many Player Support 
@@ -211,6 +211,7 @@ Selling The Codes To Other People For Money Is *Strictly Prohibited*.</b>
 </pre>
 </p>
 </details>
+
 
 
 
