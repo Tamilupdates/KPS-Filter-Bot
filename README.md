@@ -15,7 +15,7 @@
 <!-- <a href="https://github.com/Mayuri-Chan/pyrofork"><img src="https://img.shields.io/badge/PyroFork-FF9800?style=plastic&logo=python&logoColor=white&labelColor=212121" alt="PyroFork Framework"></a> --> <!-- 📜 License --> <!-- <a href="LICENSE"><img src="https://img.shields.io/github/license/Tamilupdates/KPS-Filter-Bot?style=plastic&label=License&color=4CAF50&logo=open-source-initiative&logoColor=white&labelColor=1B5E20" alt="License"></a> -->
 
 <!-- 💬 Telegram -->
-<a href="https://telegram.me/KPSBots"><img src="https://img.shields.io/badge/Join%20on%20Telegram%20Channel-0088CC?style=plastic&logo=telegram&logoColor=white&labelColor=0A3D62" alt="Telegram Channel" width="300"></a>
+<a href="https://telegram.me/KPSBots"><img src="https://img.shields.io/badge/Join%20on%20Telegram%20Channel-0088CC?style=plastic&logo=telegram&logoColor=white&labelColor=0A3D62" alt="Telegram Channel" width="250"></a>
 
 #### ***⚡ Ultimate Auto Filter Bot 🚀 For Telegram | Smart, Fast & Stream-Ready 🎬***
 </div>
@@ -213,6 +213,7 @@ Selling The Codes To Other People For Money Is *Strictly Prohibited*.</b>
 </pre>
 </p>
 </details>
+
 
 
 
