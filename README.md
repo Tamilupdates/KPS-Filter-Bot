@@ -2,15 +2,7 @@
 
 # 🚀 KPS Filter Bot ⚡
 
-<a href="https://telegram.me/KPSBots">
-  <img 
-    src="https://graph.org/file/0ff9d5e94a070fe4154c0.jpg" 
-    alt="KPSBots Logo" 
-    width="550"
-    style="border-radius: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);"
-  >
-</a>
-
+<a href="https://telegram.me/KPSBots"><img src="https://graph.org/file/0ff9d5e94a070fe4154c0.jpg" alt="KPSBots Logo" width="550"></a>
 
 ![Typing SVG](https://readme-typing-svg.herokuapp.com/?lines=Welcome+To+KPS+Filter+Bot!)
 
@@ -221,6 +213,7 @@ Selling The Codes To Other People For Money Is *Strictly Prohibited*.</b>
 </pre>
 </p>
 </details>
+
 
 
 
