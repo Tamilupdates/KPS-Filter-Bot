@@ -27,73 +27,6 @@ BUTTONS1 = {}
 BUTTONS2 = {}
 SPELL_CHECK = {}
 
-import re
-import unicodedata
-from pyrogram import Client, filters, enums
-
-# ✅ Normalize text: remove zero-width & invisible characters
-def clean_text(text: str) -> str:
-    if not text:
-        return ""
-    # Remove zero-width chars, control chars, and normalize Unicode
-    text = ''.join(ch for ch in text if not unicodedata.category(ch).startswith('C'))
-    text = unicodedata.normalize("NFKC", text)
-    return text.lower()
-
-# ✅ Precompile regex for spam detection (include obfuscated text)
-SPAM_WORDS = re.compile(
-    r"(free\s*sex|sex\s*video|18\+|xxx|nude|c0ntent|content\s*vids?|adult|porn|fuck|desi\s*xxx|"
-    r"secret\s*cams?|no\s*censorship|crystal\s*clear|steal\s*it)",
-    re.IGNORECASE
-)
-
-# ✅ Detect external links, usernames, Telegram links
-LINK_PATTERN = re.compile(
-    r"(https?://\S+|www\.\S+|t\.me/\S+|telegram\.dog/\S+|@[a-zA-Z0-9_]{5,32})",
-    re.IGNORECASE
-)
-
-@Client.on_message(filters.group & filters.text & ~filters.service)
-async def group_filter_spam(client, message):
-    user = message.from_user
-    if not user:
-        return
-
-    # ✅ Skip admins and owners
-    try:
-        member = await client.get_chat_member(message.chat.id, user.id)
-        if member.status in (
-            enums.ChatMemberStatus.ADMINISTRATOR,
-            enums.ChatMemberStatus.OWNER,
-        ):
-            return
-    except Exception:
-        return
-
-    text = message.text or ""
-    clean = clean_text(text)  # Remove hidden/invisible chars
-    chat_id = message.chat.id
-    user_mention = user.mention
-
-    # ✅ Check for obfuscated or normal spam words
-    if SPAM_WORDS.search(clean):
-        await message.delete()
-        await client.ban_chat_member(chat_id, user.id)
-        await message.reply(
-            f"🚫 {user_mention}, 18+ or spam content detected and user has been banned.",
-            quote=True
-        )
-        return
-
-    # ✅ Check for links or usernames
-    if LINK_PATTERN.search(clean):
-        await message.delete()
-        await message.reply(
-            f"⚠️ {user_mention}, posting links or usernames is not allowed!",
-            quote=True
-        )
-        return
-
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
     if message.chat.id != SUPPORT_CHAT_ID:
@@ -150,6 +83,87 @@ async def pm_text(bot, message):
     else:
         await message.reply_text(text=f"<b>ʜᴇʏ {user} 😍 ,\n\nʏᴏᴜ ᴄᴀɴ'ᴛ ɢᴇᴛ ᴍᴏᴠɪᴇs ꜰʀᴏᴍ ʜᴇʀᴇ. ʀᴇǫᴜᴇsᴛ ɪᴛ ɪɴ ᴏᴜʀ <a href={GRP_LNK}>ᴍᴏᴠɪᴇ ɢʀᴏᴜᴘ</a> ᴏʀ ᴄʟɪᴄᴋ ʀᴇǫᴜᴇsᴛ ʜᴇʀᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ 👇</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📝 ʀᴇǫᴜᴇsᴛ ʜᴇʀᴇ ", url=GRP_LNK)]]))
         await bot.send_message(chat_id=LOG_CHANNEL, text=f"<b>#𝐏𝐌_𝐌𝐒𝐆\n\nNᴀᴍᴇ : {user}\n\nID : {user_id}\n\nMᴇssᴀɢᴇ : {content}</b>")
+
+import re
+from pyrogram import Client, filters, enums
+
+# ⚡ Precompiled regex patterns (case-insensitive, Unicode-safe)
+SPAM_WORDS = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"f[\W_]*r[\W_]*e[\W_]*e[\W_]*s[\W_]*e[\W_]*x|"     # free sex (any spacing or symbols)
+    r"s[\W_]*e[\W_]*x[\W_]*v[\W_]*i[\W_]*d[\W_]*s?|"     # sex vids
+    r"18[\W_]*\+|"                                       # 18+
+    r"nude|xxx|porn|x[\W_]*v[\W_]*i[\W_]*d[\W_]*e[\W_]*o|"  # xvideo variants
+    r"desi[\W_]*xxx|secret[\W_]*cams?|no[\W_]*censorship|crystal[\W_]*clear|steal[\W_]*it"
+    r")"
+)
+
+LINK_PATTERN = re.compile(
+    r"(?i)(https?://|www\.|t\.me/|telegram\.dog/)\S+|@[a-z0-9_]{5,32}"
+)
+
+# ✅ Optional — Block words that use fake Unicode letters (e.g., Cyrillic Е instead of E)
+UNICODE_SEX_WORDS = re.compile(
+    r"[Ff][\W_]*[Rr][\W_]*[EeЕе][\W_]*[ЕE][\W_]*[SsSСс][\W_]*[EeЕе][\W_]*[XxХх]"
+)
+
+@Client.on_message(filters.group & filters.text | filters.caption)
+async def group_filter_spam(client, message):
+    user = message.from_user
+    if not user:
+        return
+
+    # Skip admins & owners
+    try:
+        member = await client.get_chat_member(message.chat.id, user.id)
+        if member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
+            return
+    except:
+        return
+
+    text = (message.text or "") + " " + (message.caption or "")
+
+    # ✅ Check message text for spam
+    if SPAM_WORDS.search(text) or UNICODE_SEX_WORDS.search(text):
+        await message.delete()
+        await message.reply_text(
+            "⚠️ 18+ or sexual content is not allowed!\nUser has been removed 🚫",
+            quote=True
+        )
+        try:
+            await client.ban_chat_member(message.chat.id, user.id)
+        except Exception:
+            pass
+        return
+
+    # ✅ Check for links or usernames
+    if LINK_PATTERN.search(text):
+        await message.delete()
+        await message.reply_text(
+            "⚠️ Links and usernames are not allowed here!",
+            quote=True
+        )
+        return
+
+    # ✅ Check inline buttons for spam words
+    if message.reply_markup:
+        for row in message.reply_markup.inline_keyboard:
+            for button in row:
+                btn_text = button.text or ""
+                if SPAM_WORDS.search(btn_text) or UNICODE_SEX_WORDS.search(btn_text):
+                    await message.delete()
+                    await message.reply_text(
+                        "⚠️ Message containing 18+ button was removed 🚫",
+                        quote=True
+                    )
+                    try:
+                        await client.ban_chat_member(message.chat.id, user.id)
+                    except Exception:
+                        pass
+                    return
+
+
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
@@ -3531,4 +3545,5 @@ async def global_filters(client, message, text=False):
                 break
     else:
         return False
+
 
