@@ -28,8 +28,6 @@ BOT_TOKEN = getattr(info, 'BOT_TOKEN', None)
 
 try:
     if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN not found in info.py!")
-
         if not CONFIG_FILE_URL:
             raise ValueError("CONFIG_FILE_URL is missing or empty")
 
@@ -42,6 +40,12 @@ try:
             logging.info("info.py downloaded successfully!")
         else:
             logging.error(f"Failed to download info.py: {res.status_code}")
+        
+        # Reload after download
+        spec.loader.exec_module(info)
+        BOT_TOKEN = getattr(info, 'BOT_TOKEN', None)
+        if not BOT_TOKEN:
+            raise ValueError("BOT_TOKEN not found in info.py!")
 except Exception as e:
     logging.error(e)
 
