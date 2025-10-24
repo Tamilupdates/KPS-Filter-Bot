@@ -82,15 +82,11 @@ async def give_filter(client, message):
             if invalid_mention:
                 reasons.append("Spam mentioned")
             reason_text = ", ".join(reasons)
-
+            
             await message.reply_text(
-                f"🚨 **Attention {user.mention}!** 🚨\n\n"
-                f"⚠️ **Warning {count}/3** ⚠️\n"
-                f"❌ **Reason:** {reason_text}\n\n"
-                f"📊 **Consequences:**\n"
-                f"{'🟢 Safe' if count < 3 else '🔴 Last Chance!'} - Follow the rules!\n"
-                f"{'⚠️ Next warning will ban.' if count == 2 else ''}\n\n"
-                f"📌 **Note:** Spam messages are strictly prohibited. Stay safe and keep the chat clean!"
+                f"**⚠️ {user.mention} - Warning {count}/3**\n\n" 
+                f"**❌ Reason:** {reason_text}\n\n" 
+                f"**📌 Note:** Spam Messages not allowed follow the rules."
             )
         else:
             try:
