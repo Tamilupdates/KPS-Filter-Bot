@@ -77,7 +77,7 @@ class KPSXBot(Client):
                 yield message
                 current += 1
       
-TechVJBot = KPSXBot()
+KPSBot = KPSXBot()
 
 multi_clients = {}
 work_loads = {}
