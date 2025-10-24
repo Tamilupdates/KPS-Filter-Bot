@@ -27,8 +27,6 @@ spec.loader.exec_module(info)
 BOT_TOKEN = getattr(info, 'BOT_TOKEN', None)
 
 try:
-    # Check for BOT_TOKEN in environment
-    
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN not found in info.py!")
 
