@@ -33,12 +33,12 @@ import unicodedata
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 
-# Temporary warning storage (use DB if persistent needed)
-user_warnings = {}
+# ---- TEMP WARNING STORAGE ----
+user_warnings = {}  # {chat_id: {user_id: count}}
 
-# ---- Normalize text for spam detection ----
+# ---- TEXT NORMALIZATION ----
 def normalize_text(text: str) -> str:
-    # Converts lookalike unicode to normal English characters
+    """Normalize to catch unicode-based spam like F​R​E​E​ SЕX C0NTЕNT."""
     return (
         unicodedata.normalize("NFKD", text)
         .encode("ascii", "ignore")
@@ -46,18 +46,15 @@ def normalize_text(text: str) -> str:
         .lower()
     )
 
-# ---- SPAM / ADULT PATTERNS ----
-SPAM_PATTERN = re.compile(
-    r"(?:@\w+|t\.me/|telegram\.me/|https?://|www\.)", re.IGNORECASE
-)
-
+# ---- PATTERNS ----
+SPAM_PATTERN = re.compile(r"(?:@\w+|t\.me/|telegram\.me/|https?://|www\.)", re.IGNORECASE)
 ADULT_PATTERN = re.compile(
     r"(?:sex|s[eе]x+|xxx|nude|porn|desi|hot\s*video|adult|naked|fuck|xvideos|xhamster|leak|"
-    r"boobs|nsfw|c0ntent|sеx|f+ree\s*s+e+x|horny|babe|cam\s*girl|private\s*video)",
+    r"boobs|nsfw|c0ntent|sеx|f+ree\s*s+e+x|horny|babe|cam\s*girl|private\s*video|onlyfans)",
     re.IGNORECASE,
 )
 
-# ---- MAIN HANDLER ----
+# ---- MAIN GROUP HANDLER ----
 @Client.on_message(filters.group & filters.incoming)
 async def give_filter(client, message):
     if not message.from_user:
@@ -68,30 +65,36 @@ async def give_filter(client, message):
     user_id = user.id
     username = f"@{user.username}" if user.username else "No Username"
 
+    # ---- Admin Exemption ----
+    try:
+        member = await client.get_chat_member(chat_id, user_id)
+        if member.status in [enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR]:
+            return  # admins are ignored
+    except Exception:
+        pass
+
+    # ---- Detect Spam ----
     text = (message.text or message.caption or "").strip()
     normalized = normalize_text(text)
-
-    # ---- 1️⃣ Spam Detection ----
     is_forwarded = bool(message.forward_date)
-    has_link_or_mention = bool(SPAM_PATTERN.search(text))
-    has_adult_words = bool(ADULT_PATTERN.search(normalized))
+    has_link = bool(SPAM_PATTERN.search(text))
+    has_adult = bool(ADULT_PATTERN.search(normalized))
 
-    if is_forwarded or has_link_or_mention or has_adult_words:
+    if is_forwarded or has_link or has_adult:
         count = user_warnings.setdefault(chat_id, {}).get(user_id, 0) + 1
         user_warnings[chat_id][user_id] = count
 
         await message.delete()
 
-        # Warn user or ban
         if count < 4:
-            reason = []
+            reasons = []
             if is_forwarded:
-                reason.append("Forwarded message")
-            if has_link_or_mention:
-                reason.append("Link or @mention")
-            if has_adult_words:
-                reason.append("Adult/spam content")
-            reason_text = ", ".join(reason)
+                reasons.append("Forwarded message")
+            if has_link:
+                reasons.append("Link or @mention")
+            if has_adult:
+                reasons.append("Adult/spam content")
+            reason_text = ", ".join(reasons)
 
             await message.reply_text(
                 f"⚠️ {user.mention} ({username}) — **Warning {count}/3**\n"
@@ -102,7 +105,7 @@ async def give_filter(client, message):
             try:
                 await client.ban_chat_member(chat_id, user_id)
                 await message.reply_text(
-                    f"🚫 {user.mention} ({username}) has been **banned** for repeated violations."
+                    f"🚫 {user.mention} ({username}) has been **banned** after 4 warnings."
                 )
                 user_warnings[chat_id].pop(user_id, None)
                 if LOG_CHANNEL:
@@ -113,22 +116,20 @@ async def give_filter(client, message):
                         f"🆔 ID: `{user_id}`\n"
                         f"🏷 Username: {username}\n"
                         f"📍 Chat ID: `{chat_id}`\n"
-                        f"❌ Reason: Sent spam/adult/forwarded content 4 times",
+                        f"❌ Reason: Sent spam/links/adult/forwarded content 4 times",
                     )
             except Exception as e:
                 print(f"Ban error: {e}")
-        return  # Stop further handling
+        return
 
-    # ---- 2️⃣ fsub (Force Subscribe) ----
+    # ---- Force Subscribe ----
     if chat_id != SUPPORT_CHAT_ID:
         settings = await get_settings(chat_id)
         if settings.get("fsub"):
             try:
                 btn = await pub_is_subscribed(client, message, settings["fsub"])
                 if btn:
-                    btn.append(
-                        [InlineKeyboardButton("Unmute Me 🔕", callback_data=f"unmuteme#{int(user_id)}")]
-                    )
+                    btn.append([InlineKeyboardButton("Unmute Me 🔕", callback_data=f"unmuteme#{int(user_id)}")])
                     await client.restrict_chat_member(
                         chat_id, user_id, ChatPermissions(can_send_messages=False)
                     )
@@ -136,7 +137,7 @@ async def give_filter(client, message):
                         photo=random.choice(PICS),
                         caption=(
                             f"👋 Hello {user.mention},\n\n"
-                            "Please join the required channel and then click **Unmute Me 🔕**."
+                            "Please join the required channel then click **Unmute Me 🔕**."
                         ),
                         reply_markup=InlineKeyboardMarkup(btn),
                         parse_mode=enums.ParseMode.HTML,
@@ -145,7 +146,7 @@ async def give_filter(client, message):
             except Exception as e:
                 print(e)
 
-        # ---- 3️⃣ Auto Filter ----
+        # ---- Auto Filter ----
         manual = await manual_filters(client, message)
         if manual is False:
             content = message.text or ""
@@ -165,7 +166,7 @@ async def give_filter(client, message):
                     reply_msg = await message.reply_text("<b><i>Searching... 🔍</i></b>")
                     await auto_filter(client, content, message, reply_msg, ai_search)
 
-    # ---- 4️⃣ Support Chat ----
+    # ---- Support Chat Restriction ----
     else:
         search = message.text
         temp_files, temp_offset, total_results = await get_search_results(
@@ -176,7 +177,6 @@ async def give_filter(client, message):
                 f"<b>Hey {user.mention}, {total_results} results found for {search}.\n\n"
                 "This is a support group — file requests not allowed here.</b>"
             )
-
 
 # ---- 5️⃣ PM HANDLER ----
 @Client.on_message(filters.private & filters.text & filters.incoming)
