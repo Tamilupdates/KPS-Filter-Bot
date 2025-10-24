@@ -16,10 +16,10 @@ logging.getLogger("aiohttp.web").setLevel(logging.ERROR)
 from requests import get as rget
 from os import environ
 
+BOT_TOKEN = environ.get('BOT_TOKEN')
 CONFIG_FILE_URL = environ.get('CONFIG_FILE_URL')
 try:
     # Check for BOT_TOKEN in environment
-    BOT_TOKEN = environ.get('BOT_TOKEN')
     if not BOT_TOKEN:
         raise EnvironmentError("BOT_TOKEN environment variable not found!")
 
