@@ -61,6 +61,86 @@ UNICODE_SEX_WORDS = re.compile(
 )
 
 
+# ===============================
+# 🚫 Anti-Spam Filter
+# ===============================
+@Client.on_message(filters.group & (filters.text | filters.caption | filters.forwarded))
+async def group_filter_spam(client, message):
+    """Check for forwarded messages, 18+ words, and links."""
+    user = message.from_user
+    if not user:
+        return
+
+    # Skip admins and owners
+    try:
+        member = await client.get_chat_member(message.chat.id, user.id)
+        if member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
+            return
+    except:
+        return
+
+    text = (message.text or "") + " " + (message.caption or "")
+
+    # 1️⃣ Forwarded messages
+    if message.forward_date:
+        await handle_violation(client, message, "Forwarded messages are not allowed!")
+        return
+
+    # # 2️⃣ 18+ or spam words
+    # if SPAM_WORDS.search(text) or UNICODE_SEX_WORDS.search(text):
+    #     await handle_violation(client, message, "18+ or sexual content is not allowed!")
+    #     return
+
+    # 3️⃣ Links or usernames
+    if LINK_PATTERN.search(text):
+        await handle_violation(client, message, "Links and usernames are not allowed!")
+        return
+
+    # 4️⃣ Inline button spam check
+    if message.reply_markup:
+        for row in message.reply_markup.inline_keyboard:
+            for button in row:
+                btn_text = button.text or ""
+                if SPAM_WORDS.search(btn_text) or UNICODE_SEX_WORDS.search(btn_text):
+                    await handle_violation(client, message, "18+ content detected in buttons!")
+                    return
+
+
+async def handle_violation(client, message, reason):
+    """Warn or ban the user depending on the number of violations."""
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+
+    # Initialize tracking
+    user_warnings.setdefault(chat_id, {})
+    user_warnings[chat_id].setdefault(user_id, 0)
+    user_warnings[chat_id][user_id] += 1
+    count = user_warnings[chat_id][user_id]
+
+    # Delete violating message
+    await message.delete()
+
+    # Warn or ban based on count
+    if count <= 3:
+        remaining = 4 - count
+        await message.reply_text(
+            f"⚠️ {reason}\n"
+            f"👤 [{message.from_user.first_name}](tg://user?id={user_id})\n"
+            f"🚨 Warning {count}/3\n"
+            f"After {remaining} more violation(s), you will be banned!",
+            disable_web_page_preview=True
+        )
+    else:
+        await message.reply_text(
+            f"🚫 [{message.from_user.first_name}](tg://user?id={user_id}) has been banned for repeated violations.",
+            disable_web_page_preview=True
+        )
+        try:
+            await client.ban_chat_member(chat_id, user_id)
+        except Exception:
+            pass
+        user_warnings[chat_id][user_id] = 0
+
 
 # ===============================
 # 🤖 Normal Auto Filter System
@@ -127,6 +207,7 @@ async def give_filter(client, message):
             "This is a support group — you can't get files here.</b>"
         )
 
+
 # ===============================
 # 📩 Private Chat Handler
 # ===============================
@@ -159,85 +240,6 @@ async def pm_text(bot, message):
             chat_id=LOG_CHANNEL,
             text=f"<b>#PM_MSG\n\nName: {user}\nID: {user_id}\nMessage: {content}</b>"
         )
-
-# ===============================
-# 🚫 Anti-Spam Filter
-# ===============================
-@Client.on_message(filters.group & (filters.text | filters.caption | filters.forwarded))
-async def group_filter_spam(client, message):
-    """Check for forwarded messages, 18+ words, and links."""
-    user = message.from_user
-    if not user:
-        return
-
-    # Skip admins and owners
-    try:
-        member = await client.get_chat_member(message.chat.id, user.id)
-        if member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
-            return
-    except:
-        return
-
-    text = (message.text or "") + " " + (message.caption or "")
-
-    # 1️⃣ Forwarded messages
-    if message.forward_date:
-        await handle_violation(client, message, "Forwarded messages are not allowed!")
-        return
-
-    # 2️⃣ 18+ or spam words
-    if SPAM_WORDS.search(text) or UNICODE_SEX_WORDS.search(text):
-        await handle_violation(client, message, "18+ or sexual content is not allowed!")
-        return
-
-    # 3️⃣ Links or usernames
-    if LINK_PATTERN.search(text):
-        await handle_violation(client, message, "Links and usernames are not allowed!")
-        return
-
-    # 4️⃣ Inline button spam check
-    if message.reply_markup:
-        for row in message.reply_markup.inline_keyboard:
-            for button in row:
-                btn_text = button.text or ""
-                if SPAM_WORDS.search(btn_text) or UNICODE_SEX_WORDS.search(btn_text):
-                    await handle_violation(client, message, "18+ content detected in buttons!")
-                    return
-
-async def handle_violation(client, message, reason):
-    """Warn or ban the user depending on the number of violations."""
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-
-    # Initialize tracking
-    user_warnings.setdefault(chat_id, {})
-    user_warnings[chat_id].setdefault(user_id, 0)
-    user_warnings[chat_id][user_id] += 1
-    count = user_warnings[chat_id][user_id]
-
-    # Delete violating message
-    await message.delete()
-
-    # Warn or ban based on count
-    if count <= 3:
-        remaining = 4 - count
-        await message.reply_text(
-            f"⚠️ {reason}\n"
-            f"👤 [{message.from_user.first_name}](tg://user?id={user_id})\n"
-            f"🚨 Warning {count}/3\n"
-            f"After {remaining} more violation(s), you will be banned!",
-            disable_web_page_preview=True
-        )
-    else:
-        await message.reply_text(
-            f"🚫 [{message.from_user.first_name}](tg://user?id={user_id}) has been banned for repeated violations.",
-            disable_web_page_preview=True
-        )
-        try:
-            await client.ban_chat_member(chat_id, user_id)
-        except Exception:
-            pass
-        user_warnings[chat_id][user_id] = 0
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
