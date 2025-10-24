@@ -28,108 +28,98 @@ BUTTONS2 = {}
 SPELL_CHECK = {}
 
 import re
-import random
 from pyrogram import Client, filters, enums
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 
-# 🔹 Combined Filter + Spam Protection
+# ✅ Precompile regex patterns outside the handler for better performance
+SPAM_WORDS = re.compile(
+    r"(?:\bdesi\s*xxx\b|\bsecret\s*cams?\b|\bno\s*censorship\b|\bcrystal\s*clear\b|\bsteal\s*it\b|@\w+_bot\b)",
+    re.IGNORECASE
+)
+
+LINK_PATTERN = re.compile(
+    r"(?:https?://|www\.|t\.me/|telegram\.dog/)\S+|@[a-zA-Z0-9_]{5,32}\b",
+    re.IGNORECASE
+)
+
+@Client.on_message(filters.group & filters.text & ~filters.service)
+async def group_filter_spam(client, message):
+    user = message.from_user
+    if not user:
+        return
+
+    # ✅ Skip admins and owners
+    try:
+        member = await client.get_chat_member(message.chat.id, user.id)
+        if member.status in (enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER):
+            return
+    except Exception:
+        return
+
+    text = message.text or ""
+    chat_id = message.chat.id
+    user_mention = user.mention
+
+    # ✅ Check for spam words
+    if SPAM_WORDS.search(text):
+        await message.delete()
+        await client.ban_chat_member(chat_id, user.id)
+        await message.reply(
+            f"🚫 {user_mention}, 18+ or spam content is not allowed. User has been banned.",
+            quote=True
+        )
+        return
+
+    # ✅ Check for links or usernames
+    if LINK_PATTERN.search(text):
+        await message.delete()
+        await message.reply(
+            f"⚠️ {user_mention}, posting links or usernames is not allowed!",
+            quote=True
+        )
+        return
+
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
-    if not message.from_user:
-        return
-
-    chat_id = message.chat.id
-    user_id = message.from_user.id
-
-    # ✅ Skip Support Chat (special handling)
-    if chat_id == SUPPORT_CHAT_ID:
+    if message.chat.id != SUPPORT_CHAT_ID:
+        settings = await get_settings(message.chat.id)
+        chatid = message.chat.id 
+        user_id = message.from_user.id if message.from_user else 0
+        if settings['fsub'] != None:
+            try:
+                btn = await pub_is_subscribed(client, message, settings['fsub'])
+                if btn:
+                    btn.append([InlineKeyboardButton("Unmute Me 🔕", callback_data=f"unmuteme#{int(user_id)}")])
+                    await client.restrict_chat_member(chatid, message.from_user.id, ChatPermissions(can_send_messages=False))
+                    await message.reply_photo(photo=random.choice(PICS), caption=f"👋 Hello {message.from_user.mention},\n\nPlease join the channel then click on unmute me button. 😇", reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
+                    return
+            except Exception as e:
+                print(e)
+            
+        manual = await manual_filters(client, message)
+        if manual == False:
+            settings = await get_settings(message.chat.id)
+            content = message.text
+            if content.startswith("/") or content.startswith("#"): return  # ignore commands and hashtags
+            try:
+                if settings['auto_ffilter']:
+                    ai_search = True
+                    reply_msg = await message.reply_text(f"<b><i>Searching... 🔍</i></b>")
+                    await auto_filter(client, content, message, reply_msg, ai_search)
+            except KeyError:
+                grpid = await active_connection(str(message.from_user.id))
+                await save_group_settings(grpid, 'auto_ffilter', True)
+                settings = await get_settings(message.chat.id)
+                if settings['auto_ffilter']:
+                    ai_search = True
+                    reply_msg = await message.reply_text(f"<b><i>Searching... 🔍</i></b>")
+                    await auto_filter(client, content, message, reply_msg, ai_search)
+    else: #a better logic to avoid repeated lines of code in auto_filter function
         search = message.text
-        temp_files, temp_offset, total_results = await get_search_results(
-            chat_id=chat_id, query=search.lower(), offset=0, filter=True
-        )
-        if total_results > 0:
-            await message.reply_text(
-                f"<b>Hey {message.from_user.mention}, {total_results} results found "
-                f"for your query '{search}'.\n\nThis is a support group, you can't get files here.</b>"
-            )
-        return
-
-    # ✅ Skip Admins/Owners for Spam Detection
-    try:
-        member = await client.get_chat_member(chat_id, user_id)
-        if member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
-            pass  # admins are not filtered
+        temp_files, temp_offset, total_results = await get_search_results(chat_id=message.chat.id, query=search.lower(), offset=0, filter=True)
+        if total_results == 0:
+            return
         else:
-            # 🚫 Anti-18+ and Anti-Link Spam Protection
-            spam_words = re.compile(
-                r"(desi\s*xxx|nude|porn|sex\s*tape|no\s*censorship|onlyfans|xvideos|erotic|cam\s*show)",
-                re.IGNORECASE,
-            )
-            link_pattern = re.compile(
-                r'(?im)(?:https?://|www\.|t\.me/|telegram\.dog/)\S+|@[a-z0-9_]{5,32}\b'
-            )
-
-            text = message.text or ""
-            if spam_words.search(text):
-                await message.delete()
-                await message.reply(
-                    f"🔞❤️‍🔥 <b>{message.from_user.mention}</b>, adult content is not allowed here!",
-                    quote=True,
-                )
-                return
-            elif link_pattern.search(text):
-                await message.delete()
-                await message.reply(
-                    f"⚠️ <b>{message.from_user.mention}</b>, posting links or usernames is not allowed!",
-                    quote=True,
-                )
-                return
-    except Exception:
-        pass
-
-    # ✅ Subscription Check (Force Sub)
-    settings = await get_settings(chat_id)
-    if settings.get('fsub'):
-        try:
-            btn = await pub_is_subscribed(client, message, settings['fsub'])
-            if btn:
-                btn.append([InlineKeyboardButton("Unmute Me 🔕", callback_data=f"unmuteme#{int(user_id)}")])
-                await client.restrict_chat_member(
-                    chat_id,
-                    user_id,
-                    ChatPermissions(can_send_messages=False)
-                )
-                await message.reply_photo(
-                    photo=random.choice(PICS),
-                    caption=(
-                        f"👋 Hello {message.from_user.mention},\n\n"
-                        f"Please join the required channel and then click on the <b>Unmute Me 🔕</b> button."
-                    ),
-                    reply_markup=InlineKeyboardMarkup(btn),
-                    parse_mode=enums.ParseMode.HTML
-                )
-                return
-        except Exception as e:
-            print(e)
-
-    # ✅ Manual Filter Check
-    manual = await manual_filters(client, message)
-    if manual is False:
-        content = message.text
-        if content.startswith(("/", "#")):
-            return  # ignore commands and hashtags
-        try:
-            if settings.get('auto_ffilter'):
-                ai_search = True
-                reply_msg = await message.reply_text("<b><i>Searching... 🔍</i></b>")
-                await auto_filter(client, content, message, reply_msg, ai_search)
-        except KeyError:
-            grpid = await active_connection(str(user_id))
-            await save_group_settings(grpid, 'auto_ffilter', True)
-            if settings.get('auto_ffilter'):
-                ai_search = True
-                reply_msg = await message.reply_text("<b><i>Searching... 🔍</i></b>")
-                await auto_filter(client, content, message, reply_msg, ai_search)
+            return await message.reply_text(f"<b>Hᴇʏ {message.from_user.mention}, {str(total_results)} ʀᴇsᴜʟᴛs ᴀʀᴇ ғᴏᴜɴᴅ ɪɴ ᴍʏ ᴅᴀᴛᴀʙᴀsᴇ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {search}. \n\nTʜɪs ɪs ᴀ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ sᴏ ᴛʜᴀᴛ ʏᴏᴜ ᴄᴀɴ'ᴛ ɢᴇᴛ ғɪʟᴇs ғʀᴏᴍ ʜᴇʀᴇ.</b>")
 
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_text(bot, message):
