@@ -32,8 +32,13 @@ import random
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 
-# Warn storage (use DB in production)
+# Warn storage (memory version — can be upgraded to DB)
 user_warnings = {}  # {chat_id: {user_id: warn_count}}
+
+# ---- SPAM PATTERNS ----
+MENTION_LINK_PATTERN = re.compile(
+    r"(?:@\w+|t\.me/|telegram\.me/|https?://|www\.)", re.IGNORECASE
+)
 
 # ---- MAIN HANDLER ----
 @Client.on_message(filters.group & filters.incoming)
@@ -42,39 +47,52 @@ async def give_filter(client, message):
         return
 
     chat_id = message.chat.id
-    user_id = message.from_user.id
+    user = message.from_user
+    user_id = user.id
+    username = f"@{user.username}" if user.username else "No Username"
 
-    # ---- 1️⃣ Forwarded message filter ----
-    if message.forward_date:
+    # ---- 1️⃣ Anti-spam detection ----
+    text = message.text or message.caption or ""
+    contains_spam = bool(MENTION_LINK_PATTERN.search(text))
+    is_forwarded = bool(message.forward_date)
+
+    if contains_spam or is_forwarded:
+        # Count warning
         count = user_warnings.setdefault(chat_id, {}).get(user_id, 0) + 1
         user_warnings[chat_id][user_id] = count
+
         await message.delete()
 
         if count < 4:
             await message.reply_text(
-                f"⚠️ {message.from_user.mention}, this is warning #{count}/3.\n"
-                f"Forwarded messages are **not allowed** here!"
+                f"⚠️ {user.mention} ({username}) — Warning #{count}/3\n"
+                f"Links, usernames, or forwarded messages are **not allowed** here! 🚫"
             )
         else:
             try:
                 await client.ban_chat_member(chat_id, user_id)
                 await message.reply_text(
-                    f"🚫 {message.from_user.mention} has been banned for repeated offenses."
+                    f"🚫 {user.mention} ({username}) has been **banned** after 4 violations."
                 )
                 user_warnings[chat_id].pop(user_id, None)
                 if LOG_CHANNEL:
                     await client.send_message(
                         LOG_CHANNEL,
-                        f"🚷 **User Banned**\n\nChat: {chat_id}\nUser: {message.from_user.mention} (`{user_id}`)\nReason: Forwarded messages 4x"
+                        f"🚷 **User Banned**\n\n"
+                        f"👤 Name: {user.mention}\n"
+                        f"🆔 ID: `{user_id}`\n"
+                        f"🏷 Username: {username}\n"
+                        f"📍 Chat: `{chat_id}`\n"
+                        f"❌ Reason: Sent link/mention/forwarded content 4 times",
                     )
             except Exception as e:
                 print(f"Ban error: {e}")
         return  # Stop further handling
 
-    # ---- 2️⃣ fsub check ----
+    # ---- 2️⃣ fsub (Force Subscribe) ----
     if chat_id != SUPPORT_CHAT_ID:
         settings = await get_settings(chat_id)
-        if settings.get("fsub") is not None:
+        if settings.get("fsub"):
             try:
                 btn = await pub_is_subscribed(client, message, settings["fsub"])
                 if btn:
@@ -82,15 +100,13 @@ async def give_filter(client, message):
                         [InlineKeyboardButton("Unmute Me 🔕", callback_data=f"unmuteme#{int(user_id)}")]
                     )
                     await client.restrict_chat_member(
-                        chat_id,
-                        user_id,
-                        ChatPermissions(can_send_messages=False),
+                        chat_id, user_id, ChatPermissions(can_send_messages=False)
                     )
                     await message.reply_photo(
                         photo=random.choice(PICS),
                         caption=(
-                            f"👋 Hello {message.from_user.mention},\n\n"
-                            "Please join the required channel then click the **Unmute Me** button. 😇"
+                            f"👋 Hello {user.mention},\n\n"
+                            "Please join the required channel then click **Unmute Me 🔕** to chat again. 😇"
                         ),
                         reply_markup=InlineKeyboardMarkup(btn),
                         parse_mode=enums.ParseMode.HTML,
@@ -99,12 +115,12 @@ async def give_filter(client, message):
             except Exception as e:
                 print(e)
 
-        # ---- 3️⃣ Manual + Auto filter ----
+        # ---- 3️⃣ Auto Filter Logic ----
         manual = await manual_filters(client, message)
         if manual is False:
             content = message.text or ""
             if content.startswith("/") or content.startswith("#"):
-                return  # skip commands & hashtags
+                return
 
             try:
                 if settings.get("auto_ffilter"):
@@ -120,7 +136,7 @@ async def give_filter(client, message):
                     reply_msg = await message.reply_text("<b><i>Searching... 🔍</i></b>")
                     await auto_filter(client, content, message, reply_msg, ai_search)
 
-    # ---- 4️⃣ For Support Chat ----
+    # ---- 4️⃣ Support Chat ----
     else:
         search = message.text
         temp_files, temp_offset, total_results = await get_search_results(
@@ -130,11 +146,12 @@ async def give_filter(client, message):
             return
         else:
             return await message.reply_text(
-                f"<b>Hᴇʏ {message.from_user.mention}, {total_results} ʀᴇsᴜʟᴛs ᴀʀᴇ ғᴏᴜɴᴅ ɪɴ ᴍʏ ᴅᴀᴛᴀʙᴀsᴇ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {search}.\n\n"
-                "Tʜɪs ɪs ᴀ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ sᴏ ʏᴏᴜ ᴄᴀɴ'ᴛ ɢᴇᴛ ғɪʟᴇs ғʀᴏᴍ ʜᴇʀᴇ.</b>"
+                f"<b>Hᴇʏ {user.mention}, {total_results} ʀᴇsᴜʟᴛs ғᴏᴜɴᴅ ғᴏʀ {search}.\n\n"
+                "Tʜɪs ɪs ᴀ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ — ɴᴏ ғɪʟᴇs ʜᴇʀᴇ.</b>"
             )
 
-# ---- PM TEXT HANDLER ----
+
+# ---- 5️⃣ PM HANDLER ----
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_text(bot, message):
     content = message.text
@@ -142,7 +159,7 @@ async def pm_text(bot, message):
     user_id = message.from_user.id
 
     if content.startswith("/") or content.startswith("#"):
-        return  # ignore commands
+        return
 
     if PM_SEARCH:
         ai_search = True
@@ -154,16 +171,15 @@ async def pm_text(bot, message):
         await auto_filter(bot, content, message, reply_msg, ai_search)
     else:
         await message.reply_text(
-            f"<b>ʜᴇʏ {user} 😍,\n\nʏᴏᴜ ᴄᴀɴ'ᴛ ɢᴇᴛ ᴍᴏᴠɪᴇs ꜰʀᴏᴍ ʜᴇʀᴇ.\n"
-            f"ʀᴇǫᴜᴇsᴛ ɪᴛ ɪɴ ᴏᴜʀ <a href={GRP_LNK}>ᴍᴏᴠɪᴇ ɢʀᴏᴜᴘ</a> "
-            "ᴏʀ ᴄʟɪᴄᴋ ʀᴇǫᴜᴇsᴛ ʜᴇʀᴇ 👇</b>",
+            f"<b>ʜᴇʏ {user} 😍,\n\nʏᴏᴜ ᴄᴀɴ'ᴛ ɢᴇᴛ ᴍᴏᴠɪᴇs ʜᴇʀᴇ.\n"
+            f"ᴊᴏɪɴ ᴏᴜʀ <a href={GRP_LNK}>ᴍᴏᴠɪᴇ ɢʀᴏᴜᴘ</a> ᴏʀ ᴄʟɪᴄᴋ ʀᴇǫᴜᴇsᴛ ʜᴇʀᴇ 👇</b>",
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("📝 ʀᴇǫᴜᴇsᴛ ʜᴇʀᴇ", url=GRP_LNK)]]
             ),
         )
         await bot.send_message(
             LOG_CHANNEL,
-            f"<b>#𝐏𝐌_𝐌𝐒𝐆\n\nNᴀᴍᴇ : {user}\nID : {user_id}\nMᴇssᴀɢᴇ : {content}</b>",
+            f"<b>#PM_MSG\n\nName: {user}\nID: {user_id}\nMessage: {content}</b>",
         )
 
 @Client.on_callback_query(filters.regex(r"^next"))
