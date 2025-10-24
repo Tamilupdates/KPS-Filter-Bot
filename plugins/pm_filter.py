@@ -29,15 +29,37 @@ SPELL_CHECK = {}
 
 import re
 import random
+import unicodedata
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 
-# Warn storage (memory version — can be upgraded to DB)
-user_warnings = {}  # {chat_id: {user_id: warn_count}}
+# ---- CONFIG ----
+SUPPORT_CHAT_ID = -1001234567890   # your support group ID
+LOG_CHANNEL = -1009876543210       # your log channel (optional)
+PICS = ["https://example.com/pic1.jpg", "https://example.com/pic2.jpg"]
 
-# ---- SPAM PATTERNS ----
-MENTION_LINK_PATTERN = re.compile(
+# Temporary warning storage (use DB if persistent needed)
+user_warnings = {}
+
+# ---- Normalize text for spam detection ----
+def normalize_text(text: str) -> str:
+    # Converts lookalike unicode to normal English characters
+    return (
+        unicodedata.normalize("NFKD", text)
+        .encode("ascii", "ignore")
+        .decode("ascii", errors="ignore")
+        .lower()
+    )
+
+# ---- SPAM / ADULT PATTERNS ----
+SPAM_PATTERN = re.compile(
     r"(?:@\w+|t\.me/|telegram\.me/|https?://|www\.)", re.IGNORECASE
+)
+
+ADULT_PATTERN = re.compile(
+    r"(?:sex|s[eе]x+|xxx|nude|porn|desi|hot\s*video|adult|naked|fuck|xvideos|xhamster|leak|"
+    r"boobs|nsfw|c0ntent|sеx|f+ree\s*s+e+x|horny|babe|cam\s*girl|private\s*video)",
+    re.IGNORECASE,
 )
 
 # ---- MAIN HANDLER ----
@@ -51,28 +73,41 @@ async def give_filter(client, message):
     user_id = user.id
     username = f"@{user.username}" if user.username else "No Username"
 
-    # ---- 1️⃣ Anti-spam detection ----
-    text = message.text or message.caption or ""
-    contains_spam = bool(MENTION_LINK_PATTERN.search(text))
-    is_forwarded = bool(message.forward_date)
+    text = (message.text or message.caption or "").strip()
+    normalized = normalize_text(text)
 
-    if contains_spam or is_forwarded:
-        # Count warning
+    # ---- 1️⃣ Spam Detection ----
+    is_forwarded = bool(message.forward_date)
+    has_link_or_mention = bool(SPAM_PATTERN.search(text))
+    has_adult_words = bool(ADULT_PATTERN.search(normalized))
+
+    if is_forwarded or has_link_or_mention or has_adult_words:
         count = user_warnings.setdefault(chat_id, {}).get(user_id, 0) + 1
         user_warnings[chat_id][user_id] = count
 
         await message.delete()
 
+        # Warn user or ban
         if count < 4:
+            reason = []
+            if is_forwarded:
+                reason.append("Forwarded message")
+            if has_link_or_mention:
+                reason.append("Link or @mention")
+            if has_adult_words:
+                reason.append("Adult/spam content")
+            reason_text = ", ".join(reason)
+
             await message.reply_text(
-                f"⚠️ {user.mention} ({username}) — Warning #{count}/3\n"
-                f"Links, usernames, or forwarded messages are **not allowed** here! 🚫"
+                f"⚠️ {user.mention} ({username}) — **Warning {count}/3**\n"
+                f"❌ Reason: {reason_text}\n"
+                f"Please follow the group rules."
             )
         else:
             try:
                 await client.ban_chat_member(chat_id, user_id)
                 await message.reply_text(
-                    f"🚫 {user.mention} ({username}) has been **banned** after 4 violations."
+                    f"🚫 {user.mention} ({username}) has been **banned** for repeated violations."
                 )
                 user_warnings[chat_id].pop(user_id, None)
                 if LOG_CHANNEL:
@@ -82,8 +117,8 @@ async def give_filter(client, message):
                         f"👤 Name: {user.mention}\n"
                         f"🆔 ID: `{user_id}`\n"
                         f"🏷 Username: {username}\n"
-                        f"📍 Chat: `{chat_id}`\n"
-                        f"❌ Reason: Sent link/mention/forwarded content 4 times",
+                        f"📍 Chat ID: `{chat_id}`\n"
+                        f"❌ Reason: Sent spam/adult/forwarded content 4 times",
                     )
             except Exception as e:
                 print(f"Ban error: {e}")
@@ -106,7 +141,7 @@ async def give_filter(client, message):
                         photo=random.choice(PICS),
                         caption=(
                             f"👋 Hello {user.mention},\n\n"
-                            "Please join the required channel then click **Unmute Me 🔕** to chat again. 😇"
+                            "Please join the required channel and then click **Unmute Me 🔕**."
                         ),
                         reply_markup=InlineKeyboardMarkup(btn),
                         parse_mode=enums.ParseMode.HTML,
@@ -115,13 +150,12 @@ async def give_filter(client, message):
             except Exception as e:
                 print(e)
 
-        # ---- 3️⃣ Auto Filter Logic ----
+        # ---- 3️⃣ Auto Filter ----
         manual = await manual_filters(client, message)
         if manual is False:
             content = message.text or ""
             if content.startswith("/") or content.startswith("#"):
                 return
-
             try:
                 if settings.get("auto_ffilter"):
                     ai_search = True
@@ -142,12 +176,10 @@ async def give_filter(client, message):
         temp_files, temp_offset, total_results = await get_search_results(
             chat_id=chat_id, query=search.lower(), offset=0, filter=True
         )
-        if total_results == 0:
-            return
-        else:
-            return await message.reply_text(
-                f"<b>Hᴇʏ {user.mention}, {total_results} ʀᴇsᴜʟᴛs ғᴏᴜɴᴅ ғᴏʀ {search}.\n\n"
-                "Tʜɪs ɪs ᴀ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ — ɴᴏ ғɪʟᴇs ʜᴇʀᴇ.</b>"
+        if total_results:
+            await message.reply_text(
+                f"<b>Hey {user.mention}, {total_results} results found for {search}.\n\n"
+                "This is a support group — file requests not allowed here.</b>"
             )
 
 
@@ -172,7 +204,7 @@ async def pm_text(bot, message):
     else:
         await message.reply_text(
             f"<b>ʜᴇʏ {user} 😍,\n\nʏᴏᴜ ᴄᴀɴ'ᴛ ɢᴇᴛ ᴍᴏᴠɪᴇs ʜᴇʀᴇ.\n"
-            f"ᴊᴏɪɴ ᴏᴜʀ <a href={GRP_LNK}>ᴍᴏᴠɪᴇ ɢʀᴏᴜᴘ</a> ᴏʀ ᴄʟɪᴄᴋ ʀᴇǫᴜᴇsᴛ ʜᴇʀᴇ 👇</b>",
+            f"ʀᴇǫᴜᴇsᴛ ɪᴛ ɪɴ <a href={GRP_LNK}>ᴍᴏᴠɪᴇ ɢʀᴏᴜᴘ</a> 👇</b>",
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("📝 ʀᴇǫᴜᴇsᴛ ʜᴇʀᴇ", url=GRP_LNK)]]
             ),
