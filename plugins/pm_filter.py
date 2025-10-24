@@ -92,7 +92,10 @@ async def give_filter(client, message):
             try:
                 await client.ban_chat_member(chat_id, user_id)
                 await message.reply_text(
-                    f"🚫 {user.mention} has been **banned** after 4 warnings."
+                    f"🚨⚠️ **Alert! {user.mention}** ⚠️🚨\n\n"
+                    f"❌ You have reached already **3 warnings**.\n"
+                    f"🚫 As a result, you are now **banned** from the group.\n\n"
+                    f"📌 For further support, please contact the group admins."
                 )
                 user_warnings[chat_id].pop(user_id, None)
                 if LOG_CHANNEL:
