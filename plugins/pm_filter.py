@@ -76,106 +76,6 @@ async def handle_violation(client, message, reason):
         except Exception as e:
             print(f"Ban error: {e}")
 
-# ---- MAIN REALTIME FILTER ----
-@Client.on_message(filters.group & filters.incoming)
-async def anti_spam_filter(client, message):
-    if not message.from_user:
-        return
-
-    chat_id = message.chat.id
-    user = message.from_user
-    user_id = user.id
-
-    # Skip admins/owners
-    try:
-        member = await client.get_chat_member(chat_id, user_id)
-        if member.status in [enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR]:
-            return
-    except Exception:
-        pass
-
-    text = (message.text or message.caption or "").strip()
-    is_forwarded = bool(message.forward_date)
-    has_link = bool(LINK_PATTERN.search(text))
-
-    mentions = MENTION_PATTERN.findall(text)
-    invalid_mention = any(m.lower() not in ["admin", "admins"] for m in mentions) if mentions else False
-
-    if is_forwarded or has_link or invalid_mention:
-        reasons = []
-        if is_forwarded:
-            reasons.append("Forwarded message")
-        if has_link:
-            reasons.append("Link shared")
-        if invalid_mention:
-            reasons.append("Invalid mention")
-        reason_text = ", ".join(reasons)
-        await handle_violation(client, message, reason_text)
-
-# ---- INITIAL CLEANUP FOR PAST MESSAGES ----
-async def scan_past_messages(client, chat_id, limit=1000):
-    """
-    Scan last `limit` messages in the group for violations and delete them.
-    """
-    async for message in client.get_chat_history(chat_id, limit=limit):
-        if not message.from_user:
-            continue
-
-        user = message.from_user
-        user_id = user.id
-
-        # Skip admins/owners
-        try:
-            member = await client.get_chat_member(chat_id, user_id)
-            if member.status in [enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR]:
-                continue
-        except Exception:
-            pass
-
-        text = (message.text or message.caption or "").strip()
-        is_forwarded = bool(message.forward_date)
-        has_link = bool(LINK_PATTERN.search(text))
-        mentions = MENTION_PATTERN.findall(text)
-        invalid_mention = any(m.lower() not in ["admin", "admins"] for m in mentions) if mentions else False
-
-        if is_forwarded or has_link or invalid_mention:
-            reasons = []
-            if is_forwarded:
-                reasons.append("Forwarded message")
-            if has_link:
-                reasons.append("Link shared")
-            if invalid_mention:
-                reasons.append("Invalid mention")
-            reason_text = ", ".join(reasons)
-            await handle_violation(client, message, reason_text)
-
-# ---- STARTUP HOOK ----
-@Client.on_message(filters.command("start_cleanup") & filters.private)
-async def start_cleanup(client, message):
-    """
-    Trigger past message scan manually in a group.
-    Example: Send /start_cleanup <group_id>
-    """
-    if len(message.text.split()) != 2:
-        await message.reply_text("Usage: /start_cleanup <chat_id>")
-        return
-    chat_id = int(message.text.split()[1])
-    await scan_past_messages(client, chat_id)
-    await message.reply_text(f"✅ Cleanup completed for chat {chat_id}.")
-
-
-
-import re
-import random
-from pyrogram import Client, filters, enums
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
-
-# ---- TEMP WARNING STORAGE ----
-user_warnings = {}  # {chat_id: {user_id: count}}
-
-# ---- PATTERNS ----
-LINK_PATTERN = re.compile(r"(?:t\.me/|telegram\.me/|https?://|www\.)", re.IGNORECASE)
-MENTION_PATTERN = re.compile(r"@(\w+)", re.IGNORECASE)
 
 # ---- MAIN GROUP HANDLER ----
 @Client.on_message(filters.group & filters.incoming)
@@ -195,60 +95,52 @@ async def give_filter(client, message):
     except Exception:
         pass
 
-    # ---- Detect Violations ----
+    # ---- SCAN PAST MESSAGES ----
+    async for past_msg in client.get_chat_history(chat_id, limit=100):
+        if not past_msg.from_user:
+            continue
+        past_user = past_msg.from_user
+        past_user_id = past_user.id
+
+        # Skip admins
+        try:
+            past_member = await client.get_chat_member(chat_id, past_user_id)
+            if past_member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
+                continue
+        except Exception:
+            pass
+
+        past_text = (past_msg.text or past_msg.caption or "").strip()
+        is_forwarded = bool(past_msg.forward_date)
+        has_link = bool(LINK_PATTERN.search(past_text))
+        mentions = MENTION_PATTERN.findall(past_text)
+        invalid_mention = any(m.lower() not in ["admin", "admins"] for m in mentions) if mentions else False
+
+        if is_forwarded or has_link or invalid_mention:
+            reasons = []
+            if is_forwarded: reasons.append("Forwarded message")
+            if has_link: reasons.append("Link shared")
+            if invalid_mention: reasons.append("Invalid mention")
+            reason_text = ", ".join(reasons)
+            await handle_violation(client, past_msg, reason_text)
+
+    # ---- REALTIME MESSAGE CHECK ----
     text = (message.text or message.caption or "").strip()
     is_forwarded = bool(message.forward_date)
     has_link = bool(LINK_PATTERN.search(text))
-
-    # --- Mention Logic ---
     mentions = MENTION_PATTERN.findall(text)
     invalid_mention = any(m.lower() not in ["admin", "admins"] for m in mentions) if mentions else False
 
-    # ---- Combine Violations ----
     if is_forwarded or has_link or invalid_mention:
-        count = user_warnings.setdefault(chat_id, {}).get(user_id, 0) + 1
-        user_warnings[chat_id][user_id] = count
-
-        await message.delete()
-
-        if count < 4:
-            reasons = []
-            if is_forwarded:
-                reasons.append("Forwarded message")
-            if has_link:
-                reasons.append("Link shared")
-            if invalid_mention:
-                reasons.append("Spam mentioned")
-            reason_text = ", ".join(reasons)
-            
-            await message.reply_text(
-                f"🚨 **Hello {user.mention}! - Warning {count}/3** ⚠️\n\n"
-                f"❌ **Reason:** {reason_text}\n\n"
-                f"📌 **Note:**\n✅ Spam messages are not allowed.\n✅ Please follow the group rules to avoid further bans."
-            )
-        else:
-            try:
-                await client.ban_chat_member(chat_id, user_id)
-                await message.reply_text(
-                    f"🚨 **Hello {user.mention}! - Ban Alert** ⚠️\n\n"
-                    f"❌ You have reached already - **3 Warnings**.\n\n"
-                    f"🚫 You are now **Banned** from the group."
-                )
-                user_warnings[chat_id].pop(user_id, None)
-                if LOG_CHANNEL:
-                    await client.send_message(
-                        LOG_CHANNEL,
-                        f"🚷 **User Banned**\n\n"
-                        f"👤 Name: {user.mention}\n"
-                        f"🆔 ID: `{user_id}`\n"
-                        f"📍 Chat ID: `{chat_id}`\n"
-                        f"❌ Reason: Mention/link/forward violations (4 warnings)"
-                    )
-            except Exception as e:
-                print(f"Ban error: {e}")
+        reasons = []
+        if is_forwarded: reasons.append("Forwarded message")
+        if has_link: reasons.append("Link shared")
+        if invalid_mention: reasons.append("Invalid mention")
+        reason_text = ", ".join(reasons)
+        await handle_violation(client, message, reason_text)
         return
 
-    # ---- Force Subscribe ----
+    # ---- Force Subscribe / Auto Filter Logic ----
     if chat_id != SUPPORT_CHAT_ID:
         settings = await get_settings(chat_id)
         if settings.get("fsub"):
@@ -272,7 +164,7 @@ async def give_filter(client, message):
             except Exception as e:
                 print(e)
 
-        # ---- Auto Filter ----
+        # Auto filter
         manual = await manual_filters(client, message)
         if manual is False:
             content = message.text or ""
@@ -303,6 +195,7 @@ async def give_filter(client, message):
                 f"<b>Hey {user.mention}, {total_results} results found for {search}.\n\n"
                 "This is a support group — file requests not allowed here.</b>"
             )
+
 
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_text(bot, message):
