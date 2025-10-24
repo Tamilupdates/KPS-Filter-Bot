@@ -18,20 +18,25 @@ from os import environ
 
 CONFIG_FILE_URL = environ.get('CONFIG_FILE_URL')
 try:
-    if not CONFIG_FILE_URL:
-        raise ValueError("CONFIG_FILE_URL is missing or empty")
+    # Check for BOT_TOKEN in environment
+    BOT_TOKEN = environ.get('BOT_TOKEN')
+    if not BOT_TOKEN:
+        raise EnvironmentError("BOT_TOKEN environment variable not found!")
 
-    res = rget(CONFIG_FILE_URL)
+        if not CONFIG_FILE_URL:
+            raise ValueError("CONFIG_FILE_URL is missing or empty")
 
-    if res.status_code == 200:
-        # Write the content to info.py file
-        with open('info.py', 'wb+') as f:
-            f.write(res.content)
-        logging.info("info.py downloaded successfully!")
-    else:
-        logging.error(f"Failed to download info.py: {res.status_code}")
+        res = rget(CONFIG_FILE_URL)
+
+        if res.status_code == 200:
+            # Write the content to info.py file
+            with open('info.py', 'wb+') as f:
+                f.write(res.content)
+            logging.info("info.py downloaded successfully!")
+        else:
+            logging.error(f"Failed to download info.py: {res.status_code}")
 except Exception as e:
-    logging.error(f"Error downloading CONFIG_FILE_URL: {e}")
+    logging.error(f"Error downloading: {e}")
 
 # Import info.py after downloading
 from info import *
@@ -47,19 +52,19 @@ from aiohttp import web
 from plugins import web_server
 from plugins.clone import restart_bots
 
-from stream.bot import KPSBot
+from stream.bot import TechVJBot
 from stream.util.keepalive import ping_server
 from stream.bot.clients import initialize_clients
 
 
 ppath = "plugins/*.py"
 files = glob.glob(ppath)
-KPSBot.start()
+TechVJBot.start()
 loop = asyncio.get_event_loop()
 
 async def start():
     print('Initalizing Your Bot')
-    bot_info = await KPSBot.get_me()
+    bot_info = await TechVJBot.get_me()
     await initialize_clients()
     for name in files:
         with open(name) as a:
@@ -78,8 +83,8 @@ async def start():
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
     await Media.ensure_indexes()
-    me = await KPSBot.get_me()
-    temp.BOT = KPSBot
+    me = await TechVJBot.get_me()
+    temp.BOT = TechVJBot
     temp.ME = me.id
     temp.U_NAME = me.username
     temp.B_NAME = me.first_name
@@ -89,7 +94,7 @@ async def start():
     today = date.today()
     now = datetime.now(tz)
     time = now.strftime("%H:%M:%S %p")
-    await KPSBot.send_message(chat_id=LOG_CHANNEL, text=script.RESTART_TXT.format(today, time))
+    await TechVJBot.send_message(chat_id=LOG_CHANNEL, text=script.RESTART_TXT.format(today, time))
     if CLONE_MODE == True:
         print("Restarting All Clone Bots.......")
         await restart_bots()

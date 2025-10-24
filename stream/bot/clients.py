@@ -3,11 +3,11 @@ import logging
 from info import *
 from pyrogram import Client
 from stream.util.config_parser import TokenParser
-from stream.bot import multi_clients, work_loads, KPSBot
+from stream.bot import multi_clients, work_loads, TechVJBot
 
 
 async def initialize_clients():
-    multi_clients[0] = KPSBot
+    multi_clients[0] = TechVJBot
     work_loads[0] = 0
     all_tokens = TokenParser().parse_from_env()
     if not all_tokens:
