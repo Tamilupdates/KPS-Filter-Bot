@@ -36,7 +36,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatPermi
 user_warnings = {}  # {chat_id: {user_id: count}}
 
 # ---- PATTERNS ----
-LINK_PATTERN = re.compile(r"(?:t\.me/|telegram\.me/|http?://|www\.)", re.IGNORECASE)
+LINK_PATTERN = re.compile(r"(?:t\.me/|telegram\.me/|https?://|www\.)", re.IGNORECASE)
 MENTION_PATTERN = re.compile(r"@(\w+)", re.IGNORECASE)
 
 # ---- MAIN GROUP HANDLER ----
