@@ -47,19 +47,19 @@ from aiohttp import web
 from plugins import web_server
 from plugins.clone import restart_bots
 
-from stream.bot import TechVJBot
+from stream.bot import KPSBot
 from stream.util.keepalive import ping_server
 from stream.bot.clients import initialize_clients
 
 
 ppath = "plugins/*.py"
 files = glob.glob(ppath)
-TechVJBot.start()
+KPSBot.start()
 loop = asyncio.get_event_loop()
 
 async def start():
     print('Initalizing Your Bot')
-    bot_info = await TechVJBot.get_me()
+    bot_info = await KPSBot.get_me()
     await initialize_clients()
     for name in files:
         with open(name) as a:
@@ -78,8 +78,8 @@ async def start():
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
     await Media.ensure_indexes()
-    me = await TechVJBot.get_me()
-    temp.BOT = TechVJBot
+    me = await KPSBot.get_me()
+    temp.BOT = KPSBot
     temp.ME = me.id
     temp.U_NAME = me.username
     temp.B_NAME = me.first_name
@@ -89,7 +89,7 @@ async def start():
     today = date.today()
     now = datetime.now(tz)
     time = now.strftime("%H:%M:%S %p")
-    await TechVJBot.send_message(chat_id=LOG_CHANNEL, text=script.RESTART_TXT.format(today, time))
+    await KPSBot.send_message(chat_id=LOG_CHANNEL, text=script.RESTART_TXT.format(today, time))
     if CLONE_MODE == True:
         print("Restarting All Clone Bots.......")
         await restart_bots()
