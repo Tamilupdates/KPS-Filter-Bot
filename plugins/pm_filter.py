@@ -33,11 +33,6 @@ import unicodedata
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 
-# ---- CONFIG ----
-SUPPORT_CHAT_ID = -1001234567890   # your support group ID
-LOG_CHANNEL = -1009876543210       # your log channel (optional)
-PICS = ["https://example.com/pic1.jpg", "https://example.com/pic2.jpg"]
-
 # Temporary warning storage (use DB if persistent needed)
 user_warnings = {}
 
