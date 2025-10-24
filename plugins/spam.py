@@ -1,5 +1,6 @@
 import re
 from pyrogram import Client, filters, enums
+import asyncio
 
 @Client.on_message(filters.group & filters.text)
 async def group_filter_spam(client, message):
@@ -30,3 +31,5 @@ async def group_filter_spam(client, message):
     elif link_pattern.search(text):
         await message.delete()
         await message.reply("⚠️ Links are not allowed. User has been removed.", quote=True)
+        await asyncio.sleep(30)
+        await message.delete()
