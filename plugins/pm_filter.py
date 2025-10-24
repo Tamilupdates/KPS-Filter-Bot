@@ -31,31 +31,26 @@ import re
 import unicodedata
 from pyrogram import Client, filters, enums
 
-# 🔹 Precompile strong spam regex (includes common obfuscations)
+# 🔹 Precompile regex
 SPAM_WORDS = re.compile(
-    r"(?:\bdesi\s*xxx\b|\bsecret\s*cams?\b|\bno\s*censorship\b|\bcrystal\s*clear\b|\bsteal\s*it\b|@\w+_bot\b|"
-    r"free\s*sex|adult\s*(?:video|content)s?|18\+|porn|nude|x{3,}|fuck|hot\s*sex|leak(?:ed)?\s*vids?)",
+    r"(?:\bdesi\s*xxx\b|\bsecret\s*cams?\b|\bno\s*censorship\b|\bcrystal\s*clear\b|\bsteal\s*it\b|@\w+_bot\b|free\s*sex|adult\s*videos?|18\+|porn|nude|sex\s*content|fuck)",
     re.IGNORECASE
 )
 
-# 🔹 Precompile link/mention regex
 LINK_PATTERN = re.compile(
     r"(?:https?://|www\.|t\.me/|telegram\.dog/)\S+|@[a-zA-Z0-9_]{5,32}\b",
     re.IGNORECASE
 )
 
-# 🔹 Normalize and sanitize text to catch obfuscated spam
+# 🔹 Function to clean and normalize text
 def normalize_text(text: str) -> str:
-    # Remove invisible / zero-width characters
-    text = re.sub(r"[\u200B-\u200F\uFEFF\u2060\u180E\u034F\u202A-\u202E]", "", text)
-    # Normalize mixed Unicode (Cyrillic/Greek → Latin)
-    text = unicodedata.normalize("NFKC", text)
-    # Replace common numeric & symbol obfuscations
-    text = re.sub(r"[@$#*!]", "a", text, flags=re.IGNORECASE)
-    text = text.replace("0", "o").replace("1", "i").replace("3", "e").replace("4", "a").replace("5", "s").replace("7", "t")
-    # Collapse multiple spaces
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    # Remove zero-width and invisible characters
+    text = re.sub(r'[\u200B-\u200D\uFEFF\u2060\u180E]', '', text)
+    # Normalize Unicode (so Cyrillic "Е" → Latin "E")
+    text = unicodedata.normalize('NFKC', text)
+    # Replace common obfuscations
+    text = text.replace('0', 'o').replace('1', 'i').replace('3', 'e').replace('4', 'a').replace('5', 's')
+    return text
 
 @Client.on_message(filters.group & filters.text & ~filters.service)
 async def group_filter_spam(client, message):
@@ -72,24 +67,21 @@ async def group_filter_spam(client, message):
 
     text = normalize_text(message.text or "")
 
-    # 🔹 Strict 18+ content detection
+    # 🔹 18+ Spam detection
     if SPAM_WORDS.search(text):
         await message.delete()
-        try:
-            await client.ban_chat_member(message.chat.id, user.id)
-        except Exception:
-            pass
+        await client.ban_chat_member(message.chat.id, user.id)
         await message.reply(
-            f"🚫 <b>{user.mention}</b> sent prohibited 18+ or adult content.\nUser has been banned immediately.",
+            f"🚫 {user.mention}, 18+ or spam content detected. User has been banned.",
             quote=True
         )
         return
 
-    # 🔹 Link or username detection
+    # 🔹 Link / username detection
     if LINK_PATTERN.search(text):
         await message.delete()
         await message.reply(
-            f"⚠️ <b>{user.mention}</b>, posting links or usernames is not allowed!",
+            f"⚠️ {user.mention}, posting links or usernames is not allowed!",
             quote=True
         )
         return
