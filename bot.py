@@ -17,6 +17,7 @@ from requests import get as rget
 from os import environ
 
 CONFIG_FILE_URL = environ.get('CONFIG_FILE_URL')
+
 # Dynamically load info.py
 spec = importlib.util.spec_from_file_location("info", "info.py")
 info = importlib.util.module_from_spec(spec)
