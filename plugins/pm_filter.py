@@ -39,6 +39,144 @@ user_warnings = {}  # {chat_id: {user_id: count}}
 LINK_PATTERN = re.compile(r"(?:t\.me/|telegram\.me/|https?://|www\.)", re.IGNORECASE)
 MENTION_PATTERN = re.compile(r"@(\w+)", re.IGNORECASE)
 
+# ---- HELPER FUNCTION ----
+async def handle_violation(client, message, reason):
+    chat_id = message.chat.id
+    user = message.from_user
+    user_id = user.id
+    user_warnings.setdefault(chat_id, {})
+    user_warnings[chat_id][user_id] = user_warnings[chat_id].get(user_id, 0) + 1
+    count = user_warnings[chat_id][user_id]
+
+    await message.delete()
+
+    if count < 4:
+        await message.reply_text(
+            f"🚨 **Hello {user.mention}! - Warning {count}/3** ⚠️\n\n"
+            f"❌ **Reason:** {reason}\n\n"
+            f"📌 **Note:** Spam messages are not allowed.\n✅ Follow the rules to avoid bans."
+        )
+    else:
+        try:
+            await client.ban_chat_member(chat_id, user_id)
+            await message.reply_text(
+                f"🚨 **Hello {user.mention}! - Ban Alert** ⚠️\n\n"
+                f"❌ You reached 3 warnings.\n🚫 You are now Banned from the group."
+            )
+            user_warnings[chat_id].pop(user_id, None)
+            if LOG_CHANNEL:
+                await client.send_message(
+                    LOG_CHANNEL,
+                    f"🚷 **User Banned**\n\n"
+                    f"👤 Name: {user.mention}\n"
+                    f"🆔 ID: `{user_id}`\n"
+                    f"📍 Chat ID: `{chat_id}`\n"
+                    f"❌ Reason: Mention/link/forward violations (4 warnings)"
+                )
+        except Exception as e:
+            print(f"Ban error: {e}")
+
+# ---- MAIN REALTIME FILTER ----
+@Client.on_message(filters.group & filters.incoming)
+async def anti_spam_filter(client, message):
+    if not message.from_user:
+        return
+
+    chat_id = message.chat.id
+    user = message.from_user
+    user_id = user.id
+
+    # Skip admins/owners
+    try:
+        member = await client.get_chat_member(chat_id, user_id)
+        if member.status in [enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR]:
+            return
+    except Exception:
+        pass
+
+    text = (message.text or message.caption or "").strip()
+    is_forwarded = bool(message.forward_date)
+    has_link = bool(LINK_PATTERN.search(text))
+
+    mentions = MENTION_PATTERN.findall(text)
+    invalid_mention = any(m.lower() not in ["admin", "admins"] for m in mentions) if mentions else False
+
+    if is_forwarded or has_link or invalid_mention:
+        reasons = []
+        if is_forwarded:
+            reasons.append("Forwarded message")
+        if has_link:
+            reasons.append("Link shared")
+        if invalid_mention:
+            reasons.append("Invalid mention")
+        reason_text = ", ".join(reasons)
+        await handle_violation(client, message, reason_text)
+
+# ---- INITIAL CLEANUP FOR PAST MESSAGES ----
+async def scan_past_messages(client, chat_id, limit=1000):
+    """
+    Scan last `limit` messages in the group for violations and delete them.
+    """
+    async for message in client.get_chat_history(chat_id, limit=limit):
+        if not message.from_user:
+            continue
+
+        user = message.from_user
+        user_id = user.id
+
+        # Skip admins/owners
+        try:
+            member = await client.get_chat_member(chat_id, user_id)
+            if member.status in [enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR]:
+                continue
+        except Exception:
+            pass
+
+        text = (message.text or message.caption or "").strip()
+        is_forwarded = bool(message.forward_date)
+        has_link = bool(LINK_PATTERN.search(text))
+        mentions = MENTION_PATTERN.findall(text)
+        invalid_mention = any(m.lower() not in ["admin", "admins"] for m in mentions) if mentions else False
+
+        if is_forwarded or has_link or invalid_mention:
+            reasons = []
+            if is_forwarded:
+                reasons.append("Forwarded message")
+            if has_link:
+                reasons.append("Link shared")
+            if invalid_mention:
+                reasons.append("Invalid mention")
+            reason_text = ", ".join(reasons)
+            await handle_violation(client, message, reason_text)
+
+# ---- STARTUP HOOK ----
+@Client.on_message(filters.command("start_cleanup") & filters.private)
+async def start_cleanup(client, message):
+    """
+    Trigger past message scan manually in a group.
+    Example: Send /start_cleanup <group_id>
+    """
+    if len(message.text.split()) != 2:
+        await message.reply_text("Usage: /start_cleanup <chat_id>")
+        return
+    chat_id = int(message.text.split()[1])
+    await scan_past_messages(client, chat_id)
+    await message.reply_text(f"✅ Cleanup completed for chat {chat_id}.")
+
+
+
+import re
+import random
+from pyrogram import Client, filters, enums
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
+
+# ---- TEMP WARNING STORAGE ----
+user_warnings = {}  # {chat_id: {user_id: count}}
+
+# ---- PATTERNS ----
+LINK_PATTERN = re.compile(r"(?:t\.me/|telegram\.me/|https?://|www\.)", re.IGNORECASE)
+MENTION_PATTERN = re.compile(r"@(\w+)", re.IGNORECASE)
+
 # ---- MAIN GROUP HANDLER ----
 @Client.on_message(filters.group & filters.incoming)
 async def give_filter(client, message):
