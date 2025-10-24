@@ -84,7 +84,7 @@ async def give_filter(client, message):
             reason_text = ", ".join(reasons)
             
             await message.reply_text(
-                f"🚨 **Hello {user.mention}! - Warning {count}/3**⚠️\n\n"
+                f"🚨 **Hello {user.mention}! - Warning {count}/3** ⚠️\n\n"
                 f"❌ **Reason:** {reason_text}\n\n"
                 f"📌 **Note:**\nSpam messages are not allowed.\nPlease follow the group rules to avoid further ban."
             )
