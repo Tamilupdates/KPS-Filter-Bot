@@ -30,14 +30,17 @@ SPELL_CHECK = {}
 import re
 from pyrogram import Client, filters, enums
 
-# ⚡ Precompiled regex patterns (case-insensitive, Unicode-safe)
+# ⚙️ In-memory warning tracker
+user_warnings = {}
+
+# ⚡ Precompiled regex patterns
 SPAM_WORDS = re.compile(
     r"(?i)"
     r"(?:"
-    r"f[\W_]*r[\W_]*e[\W_]*e[\W_]*s[\W_]*e[\W_]*x|"     # free sex (any spacing or symbols)
-    r"s[\W_]*e[\W_]*x[\W_]*v[\W_]*i[\W_]*d[\W_]*s?|"     # sex vids
-    r"18[\W_]*\+|"                                       # 18+
-    r"nude|xxx|porn|x[\W_]*v[\W_]*i[\W_]*d[\W_]*e[\W_]*o|"  # xvideo variants
+    r"f[\W_]*r[\W_]*e[\W_]*e[\W_]*s[\W_]*e[\W_]*x|"
+    r"s[\W_]*e[\W_]*x[\W_]*v[\W_]*i[\W_]*d[\W_]*s?|"
+    r"18[\W_]*\+|"
+    r"nude|xxx|porn|x[\W_]*v[\W_]*i[\W_]*d[\W_]*e[\W_]*o|"
     r"desi[\W_]*xxx|secret[\W_]*cams?|no[\W_]*censorship|crystal[\W_]*clear|steal[\W_]*it"
     r")"
 )
@@ -46,18 +49,18 @@ LINK_PATTERN = re.compile(
     r"(?i)(https?://|www\.|t\.me/|telegram\.dog/)\S+|@[a-z0-9_]{5,32}"
 )
 
-# ✅ Optional — Block words that use fake Unicode letters (e.g., Cyrillic Е instead of E)
 UNICODE_SEX_WORDS = re.compile(
-    r"[Ff][\W_]*[Rr][\W_]*[EeЕе][\W_]*[ЕE][\W_]*[SsSСс][\W_]*[EeЕе][\W_]*[XxХх]"
+    r"[Ff][\W_]*[Rr][\W_]*[EeЕе][\W_]*[SsSСс][\W_]*[EeЕе][\W_]*[XxХх]"
 )
 
-@Client.on_message(filters.group & filters.text | filters.caption)
+
+@Client.on_message(filters.group & (filters.text | filters.caption | filters.forwarded))
 async def group_filter_spam(client, message):
     user = message.from_user
     if not user:
         return
 
-    # Skip admins & owners
+    # ✅ Skip admins & owners
     try:
         member = await client.get_chat_member(message.chat.id, user.id)
         if member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
@@ -67,45 +70,71 @@ async def group_filter_spam(client, message):
 
     text = (message.text or "") + " " + (message.caption or "")
 
-    # ✅ Check message text for spam
+    # 🚫 1. Forwarded message
+    if message.forward_date:
+        await handle_violation(client, message, "Forwarded messages are not allowed!")
+        return
+
+    # 🚫 2. Sexual or spam words
     if SPAM_WORDS.search(text) or UNICODE_SEX_WORDS.search(text):
-        await message.delete()
-        await message.reply_text(
-            "⚠️ 18+ or sexual content is not allowed!\nUser has been removed 🚫",
-            quote=True
-        )
-        try:
-            await client.ban_chat_member(message.chat.id, user.id)
-        except Exception:
-            pass
+        await handle_violation(client, message, "18+ or sexual content is not allowed!")
         return
 
-    # ✅ Check for links or usernames
+    # 🚫 3. Links or usernames
     if LINK_PATTERN.search(text):
-        await message.delete()
-        await message.reply_text(
-            "⚠️ Links and usernames are not allowed here!",
-            quote=True
-        )
+        await handle_violation(client, message, "Links and usernames are not allowed!")
         return
 
-    # ✅ Check inline buttons for spam words
+    # 🚫 4. Inline buttons check
     if message.reply_markup:
         for row in message.reply_markup.inline_keyboard:
             for button in row:
                 btn_text = button.text or ""
                 if SPAM_WORDS.search(btn_text) or UNICODE_SEX_WORDS.search(btn_text):
-                    await message.delete()
-                    await message.reply_text(
-                        "⚠️ Message containing 18+ button was removed 🚫",
-                        quote=True
-                    )
-                    try:
-                        await client.ban_chat_member(message.chat.id, user.id)
-                    except Exception:
-                        pass
+                    await handle_violation(client, message, "18+ content detected in buttons!")
                     return
-                    
+
+
+async def handle_violation(client, message, reason):
+    """Handles warning, deleting, and banning logic."""
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+
+    # Initialize user warning count
+    user_warnings.setdefault(chat_id, {})
+    user_warnings[chat_id].setdefault(user_id, 0)
+    user_warnings[chat_id][user_id] += 1
+
+    count = user_warnings[chat_id][user_id]
+
+    await message.delete()
+
+    # 🟡 Warn 1st–3rd time
+    if count <= 3:
+        remaining = 4 - count
+        await message.reply_text(
+            f"⚠️ {reason}\n"
+            f"User: [{message.from_user.first_name}](tg://user?id={user_id})\n"
+            f"🚨 Warning {count}/3\n"
+            f"After {remaining} more violation(s), you will be banned!",
+            quote=True,
+            disable_web_page_preview=True
+        )
+    # 🔴 4th time → Ban user
+    else:
+        await message.reply_text(
+            f"🚫 User [{message.from_user.first_name}](tg://user?id={user_id}) "
+            f"has been banned for repeated violations.",
+            quote=True,
+            disable_web_page_preview=True
+        )
+        try:
+            await client.ban_chat_member(chat_id, user_id)
+        except Exception:
+            pass
+        # Reset warning counter after ban
+        user_warnings[chat_id][user_id] = 0
+            
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
@@ -3544,6 +3573,7 @@ async def global_filters(client, message, text=False):
                 break
     else:
         return False
+
 
 
 
