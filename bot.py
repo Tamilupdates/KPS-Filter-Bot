@@ -15,7 +15,6 @@ logging.getLogger("aiohttp.web").setLevel(logging.ERROR)
 
 from requests import get as rget
 from os import environ
-from info import *
 
 CONFIG_FILE_URL = environ.get('CONFIG_FILE_URL')
 # Dynamically load info.py
