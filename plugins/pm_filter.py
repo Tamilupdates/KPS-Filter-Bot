@@ -84,9 +84,13 @@ async def give_filter(client, message):
             reason_text = ", ".join(reasons)
 
             await message.reply_text(
-                f"⚠️ {user.mention} — **Warning {count}/3**\n"
-                f"❌ Reason: {reason_text}\n"
-                f"Spam Messages not allowed follow the rules."
+                f"🚨 **Attention {user.mention}!** 🚨\n\n"
+                f"⚠️ **Warning {count}/3** ⚠️\n"
+                f"❌ **Reason:** {reason_text}\n\n"
+                f"📊 **Consequences:**\n"
+                f"{'🟢 Safe' if count < 3 else '🔴 Last Chance!'} - Follow the rules!\n"
+                f"{'⚠️ Next warning will ban.' if count == 2 else ''}\n\n"
+                f"📌 **Note:** Spam messages are strictly prohibited. Stay safe and keep the chat clean!"
             )
         else:
             try:
