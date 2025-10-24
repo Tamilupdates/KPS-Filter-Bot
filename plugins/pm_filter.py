@@ -31,26 +31,27 @@ import re
 import unicodedata
 from pyrogram import Client, filters, enums
 
-# 🔹 Precompile regex
+# ✅ Normalize text: remove zero-width & invisible characters
+def clean_text(text: str) -> str:
+    if not text:
+        return ""
+    # Remove zero-width chars, control chars, and normalize Unicode
+    text = ''.join(ch for ch in text if not unicodedata.category(ch).startswith('C'))
+    text = unicodedata.normalize("NFKC", text)
+    return text.lower()
+
+# ✅ Precompile regex for spam detection (include obfuscated text)
 SPAM_WORDS = re.compile(
-    r"(?:\bdesi\s*xxx\b|\bsecret\s*cams?\b|\bno\s*censorship\b|\bcrystal\s*clear\b|\bsteal\s*it\b|@\w+_bot\b|free\s*sex|adult\s*videos?|18\+|porn|nude|sex\s*content|fuck)",
+    r"(free\s*sex|sex\s*video|18\+|xxx|nude|c0ntent|content\s*vids?|adult|porn|fuck|desi\s*xxx|"
+    r"secret\s*cams?|no\s*censorship|crystal\s*clear|steal\s*it)",
     re.IGNORECASE
 )
 
+# ✅ Detect external links, usernames, Telegram links
 LINK_PATTERN = re.compile(
-    r"(?:https?://|www\.|t\.me/|telegram\.dog/)\S+|@[a-zA-Z0-9_]{5,32}\b",
+    r"(https?://\S+|www\.\S+|t\.me/\S+|telegram\.dog/\S+|@[a-zA-Z0-9_]{5,32})",
     re.IGNORECASE
 )
-
-# 🔹 Function to clean and normalize text
-def normalize_text(text: str) -> str:
-    # Remove zero-width and invisible characters
-    text = re.sub(r'[\u200B-\u200D\uFEFF\u2060\u180E]', '', text)
-    # Normalize Unicode (so Cyrillic "Е" → Latin "E")
-    text = unicodedata.normalize('NFKC', text)
-    # Replace common obfuscations
-    text = text.replace('0', 'o').replace('1', 'i').replace('3', 'e').replace('4', 'a').replace('5', 's')
-    return text
 
 @Client.on_message(filters.group & filters.text & ~filters.service)
 async def group_filter_spam(client, message):
@@ -58,30 +59,37 @@ async def group_filter_spam(client, message):
     if not user:
         return
 
+    # ✅ Skip admins and owners
     try:
         member = await client.get_chat_member(message.chat.id, user.id)
-        if member.status in (enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER):
+        if member.status in (
+            enums.ChatMemberStatus.ADMINISTRATOR,
+            enums.ChatMemberStatus.OWNER,
+        ):
             return
     except Exception:
         return
 
-    text = normalize_text(message.text or "")
+    text = message.text or ""
+    clean = clean_text(text)  # Remove hidden/invisible chars
+    chat_id = message.chat.id
+    user_mention = user.mention
 
-    # 🔹 18+ Spam detection
-    if SPAM_WORDS.search(text):
+    # ✅ Check for obfuscated or normal spam words
+    if SPAM_WORDS.search(clean):
         await message.delete()
-        await client.ban_chat_member(message.chat.id, user.id)
+        await client.ban_chat_member(chat_id, user.id)
         await message.reply(
-            f"🚫 {user.mention}, 18+ or spam content detected. User has been banned.",
+            f"🚫 {user_mention}, 18+ or spam content detected and user has been banned.",
             quote=True
         )
         return
 
-    # 🔹 Link / username detection
-    if LINK_PATTERN.search(text):
+    # ✅ Check for links or usernames
+    if LINK_PATTERN.search(clean):
         await message.delete()
         await message.reply(
-            f"⚠️ {user.mention}, posting links or usernames is not allowed!",
+            f"⚠️ {user_mention}, posting links or usernames is not allowed!",
             quote=True
         )
         return
@@ -3523,3 +3531,4 @@ async def global_filters(client, message, text=False):
                 break
     else:
         return False
+
