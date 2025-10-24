@@ -28,110 +28,141 @@ BUTTONS2 = {}
 SPELL_CHECK = {}
 
 import re
+import random
 from pyrogram import Client, filters, enums
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 
-# Precompiled regex patterns for performance
-MENTION_PATTERN = re.compile(r"@\w+")
-LINK_PATTERN = re.compile(r"(https?://\S+|t\.me/\S+)", re.IGNORECASE)
+# ---- TEMP WARNING STORAGE ----
+user_warnings = {}  # {chat_id: {user_id: count}}
 
-# In-memory warning count (use DB in production)
-WARNINGS = {}
+# ---- PATTERNS ----
+LINK_PATTERN = re.compile(r"(?:t\.me/|telegram\.me/|http?://|www\.)", re.IGNORECASE)
+MENTION_PATTERN = re.compile(r"@(\w+)", re.IGNORECASE)
 
-@Client.on_message(filters.group & filters.text & filters.incoming)
-async def anti_spam_filter(client, message):
-    user = message.from_user
-    if not user:
-        return
-    
-    # Skip admins or creators
-    try:
-        member = await client.get_chat_member(message.chat.id, user.id)
-        if member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
-            return
-    except Exception:
-        return
-    
-    text = message.text
-    
-    # Block all links
-    if LINK_PATTERN.search(text):
-        await handle_violation(client, message, user, "Links are not allowed.")
-        return
-
-    # Block mentions except @admin or @admins
-    mentions = MENTION_PATTERN.findall(text)
-    for mention in mentions:
-        if mention.lower() not in ("@admin", "@admins"):
-            await handle_violation(client, message, user, "Mentions are not allowed.")
-            return
-
-
-async def handle_violation(client, message, user, reason):
-    chat_id = message.chat.id
-    user_id = user.id
-    WARNINGS.setdefault(chat_id, {})
-    WARNINGS[chat_id][user_id] = WARNINGS[chat_id].get(user_id, 0) + 1
-    count = WARNINGS[chat_id][user_id]
-
-    # Delete spam message
-    await message.delete()
-
-    # Warn user (3rd offense = ban)
-    if count < 3:
-        await message.reply_text(
-            f"⚠️ {user.mention} — **Warning {count}/3**\n"
-            f"Reason: {reason}",
-            quote=True
-        )
-    elif count == 3:
-        await message.reply_text(
-            f"🚫 {user.mention} — **You have been banned for repeated violations.**"
-        )
-        await client.ban_chat_member(chat_id, user_id)
-        del WARNINGS[chat_id][user_id]
-
-@Client.on_message(filters.group & filters.text & filters.incoming)
+# ---- MAIN GROUP HANDLER ----
+@Client.on_message(filters.group & filters.incoming)
 async def give_filter(client, message):
-    if message.chat.id != SUPPORT_CHAT_ID:
-        settings = await get_settings(message.chat.id)
-        chatid = message.chat.id 
-        user_id = message.from_user.id if message.from_user else 0
-        if settings['fsub'] != None:
+    if not message.from_user:
+        return
+
+    chat_id = message.chat.id
+    user = message.from_user
+    user_id = user.id
+
+    # ---- Admin Exemption ----
+    try:
+        member = await client.get_chat_member(chat_id, user_id)
+        if member.status in [enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR]:
+            return  # skip admins completely
+    except Exception:
+        pass
+
+    # ---- Detect Violations ----
+    text = (message.text or message.caption or "").strip()
+    is_forwarded = bool(message.forward_date)
+    has_link = bool(LINK_PATTERN.search(text))
+
+    # --- Mention Logic ---
+    mentions = MENTION_PATTERN.findall(text)
+    invalid_mention = any(m.lower() not in ["admin", "admins"] for m in mentions) if mentions else False
+
+    # ---- Combine Violations ----
+    if is_forwarded or has_link or invalid_mention:
+        count = user_warnings.setdefault(chat_id, {}).get(user_id, 0) + 1
+        user_warnings[chat_id][user_id] = count
+
+        await message.delete()
+
+        if count < 4:
+            reasons = []
+            if is_forwarded:
+                reasons.append("Forwarded message")
+            if has_link:
+                reasons.append("Link shared")
+            if invalid_mention:
+                reasons.append("Spam mentioned")
+            reason_text = ", ".join(reasons)
+
+            await message.reply_text(
+                f"⚠️ {user.mention} — **Warning {count}/3**\n"
+                f"❌ Reason: {reason_text}\n"
+                f"Spam Messages not allowed follow the rules."
+            )
+        else:
             try:
-                btn = await pub_is_subscribed(client, message, settings['fsub'])
+                await client.ban_chat_member(chat_id, user_id)
+                await message.reply_text(
+                    f"🚫 {user.mention} has been **banned** after 4 warnings."
+                )
+                user_warnings[chat_id].pop(user_id, None)
+                if LOG_CHANNEL:
+                    await client.send_message(
+                        LOG_CHANNEL,
+                        f"🚷 **User Banned**\n\n"
+                        f"👤 Name: {user.mention}\n"
+                        f"🆔 ID: `{user_id}`\n"
+                        f"📍 Chat ID: `{chat_id}`\n"
+                        f"❌ Reason: Mention/link/forward violations (4 warnings)"
+                    )
+            except Exception as e:
+                print(f"Ban error: {e}")
+        return
+
+    # ---- Force Subscribe ----
+    if chat_id != SUPPORT_CHAT_ID:
+        settings = await get_settings(chat_id)
+        if settings.get("fsub"):
+            try:
+                btn = await pub_is_subscribed(client, message, settings["fsub"])
                 if btn:
                     btn.append([InlineKeyboardButton("Unmute Me 🔕", callback_data=f"unmuteme#{int(user_id)}")])
-                    await client.restrict_chat_member(chatid, message.from_user.id, ChatPermissions(can_send_messages=False))
-                    await message.reply_photo(photo=random.choice(PICS), caption=f"👋 Hello {message.from_user.mention},\n\nPlease join the channel then click on unmute me button. 😇", reply_markup=InlineKeyboardMarkup(btn), parse_mode=enums.ParseMode.HTML)
+                    await client.restrict_chat_member(
+                        chat_id, user_id, ChatPermissions(can_send_messages=False)
+                    )
+                    await message.reply_photo(
+                        photo=random.choice(PICS),
+                        caption=(
+                            f"👋 Hello {user.mention},\n\n"
+                            "Please join the required channel then click **Unmute Me 🔕**."
+                        ),
+                        reply_markup=InlineKeyboardMarkup(btn),
+                        parse_mode=enums.ParseMode.HTML,
+                    )
                     return
             except Exception as e:
                 print(e)
-            
+
+        # ---- Auto Filter ----
         manual = await manual_filters(client, message)
-        if manual == False:
-            settings = await get_settings(message.chat.id)
-            content = message.text
-            if content.startswith("/") or content.startswith("#"): return  # ignore commands and hashtags
+        if manual is False:
+            content = message.text or ""
+            if content.startswith("/") or content.startswith("#"):
+                return
             try:
-                if settings['auto_ffilter']:
+                if settings.get("auto_ffilter"):
                     ai_search = True
-                    reply_msg = await message.reply_text(f"<b><i>Searching... 🔍</i></b>")
+                    reply_msg = await message.reply_text("<b><i>Searching... 🔍</i></b>")
                     await auto_filter(client, content, message, reply_msg, ai_search)
             except KeyError:
-                grpid = await active_connection(str(message.from_user.id))
-                await save_group_settings(grpid, 'auto_ffilter', True)
-                settings = await get_settings(message.chat.id)
-                if settings['auto_ffilter']:
+                grpid = await active_connection(str(user_id))
+                await save_group_settings(grpid, "auto_ffilter", True)
+                settings = await get_settings(chat_id)
+                if settings.get("auto_ffilter"):
                     ai_search = True
-                    reply_msg = await message.reply_text(f"<b><i>Searching... 🔍</i></b>")
+                    reply_msg = await message.reply_text("<b><i>Searching... 🔍</i></b>")
                     await auto_filter(client, content, message, reply_msg, ai_search)
-    else: #a better logic to avoid repeated lines of code in auto_filter function
+
+    # ---- Support Chat Restriction ----
+    else:
         search = message.text
-        temp_files, temp_offset, total_results = await get_search_results(chat_id=message.chat.id, query=search.lower(), offset=0, filter=True)
-        if total_results == 0:
-            return
-        else:
-            return await message.reply_text(f"<b>Hᴇʏ {message.from_user.mention}, {str(total_results)} ʀᴇsᴜʟᴛs ᴀʀᴇ ғᴏᴜɴᴅ ɪɴ ᴍʏ ᴅᴀᴛᴀʙᴀsᴇ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {search}. \n\nTʜɪs ɪs ᴀ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ sᴏ ᴛʜᴀᴛ ʏᴏᴜ ᴄᴀɴ'ᴛ ɢᴇᴛ ғɪʟᴇs ғʀᴏᴍ ʜᴇʀᴇ.</b>")
+        temp_files, temp_offset, total_results = await get_search_results(
+            chat_id=chat_id, query=search.lower(), offset=0, filter=True
+        )
+        if total_results:
+            await message.reply_text(
+                f"<b>Hey {user.mention}, {total_results} results found for {search}.\n\n"
+                "This is a support group — file requests not allowed here.</b>"
+            )
 
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_text(bot, message):
