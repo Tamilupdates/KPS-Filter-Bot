@@ -17,12 +17,20 @@ from requests import get as rget
 from os import environ
 from info import *
 
-BOT_TOKEN = environ.get('BOT_TOKEN')
 CONFIG_FILE_URL = environ.get('CONFIG_FILE_URL')
+# Dynamically load info.py
+spec = importlib.util.spec_from_file_location("info", "info.py")
+info = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(info)
+
+# Access BOT_TOKEN from info.py
+BOT_TOKEN = getattr(info, 'BOT_TOKEN', None)
+
 try:
     # Check for BOT_TOKEN in environment
+    
     if not BOT_TOKEN:
-        raise EnvironmentError("BOT_TOKEN environment variable not found!")
+        raise ValueError("BOT_TOKEN not found in info.py!")
 
         if not CONFIG_FILE_URL:
             raise ValueError("CONFIG_FILE_URL is missing or empty")
@@ -37,7 +45,7 @@ try:
         else:
             logging.error(f"Failed to download info.py: {res.status_code}")
 except Exception as e:
-    logging.error(f"Error downloading: {e}")
+    logging.error(e)
 
 # Import info.py after downloading
 from info import *
