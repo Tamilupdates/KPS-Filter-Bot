@@ -49,14 +49,6 @@ async def give_filter(client, message):
     user = message.from_user
     user_id = user.id
 
-    # Check if user is admin or owner
-    try:
-        member = await client.get_chat_member(message.chat.id, user.id)
-        if member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
-            return
-    except:
-        return
-
     # ---- Detect Violations ----
     text = (message.text or message.caption or "").strip()
     is_forwarded = bool(message.forward_date)
