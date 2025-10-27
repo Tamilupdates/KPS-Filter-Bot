@@ -49,13 +49,13 @@ async def give_filter(client, message):
     user = message.from_user
     user_id = user.id
 
-    # ---- Admin Exemption ----
+    # Check if user is admin or owner
     try:
-        member = await client.get_chat_member(chat_id, user_id)
-        if member.status in [enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR]:
-            return  # skip admins completely
-    except Exception:
-        pass
+        member = await client.get_chat_member(message.chat.id, user.id)
+        if member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
+            return
+    except:
+        return
 
     # ---- Detect Violations ----
     text = (message.text or message.caption or "").strip()
