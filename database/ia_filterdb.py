@@ -9,7 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from marshmallow.exceptions import ValidationError
 from info import FILE_DB_URI, DATABASE_NAME, COLLECTION_NAME, USE_CAPTION_FILTER, MAX_B_TN
 from utils import get_settings, save_group_settings, temp
-from database.size_filter_db import matches_size_rule
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -60,10 +60,6 @@ async def save_file(media):
         logger.warning(f"Skipping file '{file_name}' due to keyword filter.")
         return False, 0
 
-    # Check if file size matches any active size filter rule
-    if matches_size_rule(media.file_size):
-        logger.warning(f"Skipping file '{file_name}' (size {media.file_size} bytes) due to size filter.")
-        return False, 0
     try:
         await file.commit()
     except DuplicateKeyError:      

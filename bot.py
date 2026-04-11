@@ -94,7 +94,7 @@ from stream.bot import KPSBot
 from stream.util.keepalive import ping_server
 from stream.bot.clients import initialize_clients
 from database.filter_keywords_db import load_keywords_to_cache
-from database.size_filter_db import load_size_filters
+
 
 
 ppath = "plugins/*.py"
@@ -123,7 +123,7 @@ async def start():
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
     await load_keywords_to_cache()  # seed + warm FILTER_KEYWORDS cache from MongoDB
-    await load_size_filters()        # warm SIZE_RULES cache from MongoDB
+
     await Media.ensure_indexes()
     me = await KPSBot.get_me()
     temp.BOT = KPSBot
