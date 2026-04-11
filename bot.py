@@ -1,11 +1,38 @@
 import os, sys, glob, importlib, logging, logging.config, pytz, asyncio
 from pathlib import Path
+import time as _time
+
+# ── IST Logging Formatter ──────────────────────────────────────────────────
+class ISTFormatter(logging.Formatter):
+    """Logging formatter that always shows timestamps in IST (Asia/Kolkata)."""
+    _IST = pytz.timezone("Asia/Kolkata")
+
+    def converter(self, timestamp):
+        import datetime
+        dt = datetime.datetime.fromtimestamp(timestamp, tz=self._IST)
+        return dt.timetuple()
+
+    def formatTime(self, record, datefmt=None):
+        import datetime
+        dt = datetime.datetime.fromtimestamp(record.created, tz=self._IST)
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.strftime("%H:%M:%S %p")  # 24-hour IST with AM/PM
+# ──────────────────────────────────────────────────────────────────────────
 
 # Get logging configurations
 logging.config.fileConfig('logging.conf')
 logging.getLogger().setLevel(logging.INFO)
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 logging.getLogger("imdbpy").setLevel(logging.ERROR)
+
+# Apply IST formatter to every handler so ALL log timestamps are in IST
+for _handler in logging.root.handlers:
+    _fmt  = _handler.formatter
+    _datefmt = _fmt.datefmt if _fmt else "%I:%M:%S %p"
+    _msgfmt  = _fmt._fmt   if _fmt else "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    _handler.setFormatter(ISTFormatter(fmt=_msgfmt, datefmt=_datefmt))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -66,6 +93,8 @@ from plugins.clone import restart_bots
 from stream.bot import KPSBot
 from stream.util.keepalive import ping_server
 from stream.bot.clients import initialize_clients
+from database.filter_keywords_db import load_keywords_to_cache
+from database.size_filter_db import load_size_filters
 
 
 ppath = "plugins/*.py"
@@ -93,6 +122,8 @@ async def start():
     b_users, b_chats = await db.get_banned()
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
+    await load_keywords_to_cache()  # seed + warm FILTER_KEYWORDS cache from MongoDB
+    await load_size_filters()        # warm SIZE_RULES cache from MongoDB
     await Media.ensure_indexes()
     me = await KPSBot.get_me()
     temp.BOT = KPSBot
@@ -104,7 +135,7 @@ async def start():
     tz = pytz.timezone('Asia/Kolkata')
     today = date.today()
     now = datetime.now(tz)
-    time = now.strftime("%H:%M:%S %p")
+    time = now.strftime("%I:%M:%S %p")
     await KPSBot.send_message(chat_id=LOG_CHANNEL, text=script.RESTART_TXT.format(today, time))
     if CLONE_MODE == True:
         print("Restarting All Clone Bots.......")

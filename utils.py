@@ -43,6 +43,7 @@ class temp(object):
     SHORT = {}
     SETTINGS = {}
     IMDB_CAP = {}
+    FILTER_KEYWORDS = []  # populated from MongoDB at startup; updated live by /addkw & /removekw
 
 
 async def pub_is_subscribed(bot, query, channel):
@@ -316,7 +317,10 @@ def last_online(from_user):
     elif from_user.status == enums.UserStatus.ONLINE:
         time += "Currently Online"
     elif from_user.status == enums.UserStatus.OFFLINE:
-        time += from_user.last_online_date.strftime("%a, %d %b %Y, %H:%M:%S")
+        import pytz
+        ist = pytz.timezone('Asia/Kolkata')
+        ist_time = from_user.last_online_date.astimezone(ist)
+        time += ist_time.strftime("%a, %d %b %Y, %I:%M:%S %p")
     return time
 
 def split_quotes(text: str) -> List:

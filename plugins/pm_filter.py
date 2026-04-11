@@ -12,6 +12,7 @@ from database.ia_filterdb import Media, get_file_details, get_search_results, ge
 from database.filters_mdb import del_all, find_filter, get_filters
 from database.connections_mdb import active_connection, all_connections, delete_connection, if_active, make_active, make_inactive
 from database.gfilters_mdb import find_gfilter, get_gfilters, del_allg
+from database.spam_warnings_db import add_warning, reset_warnings
 from urllib.parse import quote_plus
 from stream.util.file_properties import get_name, get_hash, get_media_file_size
 
@@ -32,74 +33,231 @@ import random
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 
-# ---- TEMP WARNING STORAGE ----
-user_warnings = {}  # {chat_id: {user_id: count}}
+# ---- TEMP WARNING STORAGE (legacy fallback – now DB-backed) ----
+user_warnings = {}  # kept for compatibility; not used for counting anymore
 
-# ---- PATTERNS ----
-LINK_PATTERN = re.compile(r"(?:t\.me/|telegram\.me/|https?://|www\.)", re.IGNORECASE)
+# ---- ALL LINK & MARKDOWN PATTERNS ----
+LINK_PATTERN = re.compile(
+    r"(?:"
+    # Standard URLs
+    r"https?://[^\s\)]+"                                            # https:// or http://
+    r"|www\.[a-zA-Z0-9\-]+\.[a-zA-Z]{2,}[^\s]*"                   # www.domain.com
+    
+    # Telegram specific
+    r"|t\.me/[^\s\)]+"                                             # t.me/...
+    r"|telegram\.me/[^\s\)]+"                                      # telegram.me/...
+    r"|telegram\.dog/[^\s\)]+"                                     # telegram.dog/...
+    r"|tg://[^\s\)]+"                                              # tg:// deep links
+    r"|t\.me/joinchat/[^\s\)]+"                                    # t.me/joinchat/...
+    r"|t\.me/\+[^\s\)]+"                                           # t.me/+invite
+    r"|t\.me/c/[^\s\)]+"                                           # t.me/c/channel/msg
+    r"|t\.me/[^\s]+\?start(?:app)?=[^\s]+"                        # t.me/bot?startapp=
+    
+    # ✅ Markdown hidden links [text](url) — only real URLs inside ()
+    r"|\[[^\[\]]+\]\(https?://[^\)]+\)"                            # [text](https://...)
+    r"|\[[^\[\]]+\]\(t\.me/[^\)]+\)"                              # [text](t.me/...)
+    r"|\[[^\[\]]+\]\(tg://[^\)]+\)"                               # [text](tg://...)
+    r"|\[[^\[\]]+\]\(www\.[^\)]+\)"                               # [text](www....)
+    r"|\[[^\[\]]+\]\([^\)]*telegram[^\)]*\)"                      # [text](...telegram...)
+
+    # HTML anchor tags
+    r"|<a\s+href=['\"]?https?://[^'\">\s]+"                       # <a href="https://
+    r"|<a\s+href=['\"]?t\.me/[^'\">\s]+"                         # <a href="t.me/
+
+    # Zero-width character tricks
+    r"|(?:https?://|www\.)[^\s]*[\u200b\u200c\u200d\u2060\ufeff][^\s]*"   # URL with zero-width
+    r"|[^\s]*[\u200b\u200c\u200d\u2060\ufeff][^\s]*\.[a-zA-Z]{2,}"        # domain with zero-width
+
+    # IP address links
+    r"|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?(?:/[^\s]*)?\b"     # 192.168.x.x
+
+    # Short URL services
+    r"|(?:bit\.ly|goo\.gl|tinyurl\.com|ow\.ly|is\.gd|buff\.ly"
+    r"|adf\.ly|short\.io|rebrand\.ly|cutt\.ly|t\.co"
+    r"|shorturl\.at|tiny\.cc|bl\.ink|rb\.gy)/[^\s]+"
+    r")",
+    re.IGNORECASE
+)
+
 MENTION_PATTERN = re.compile(r"@(\w+)", re.IGNORECASE)
+
+# ---- COMPLETE ALL EMOJI PATTERN ----
+SPAM_EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"
+    "\U0001F300-\U0001F5FF"
+    "\U0001F680-\U0001F6FF"
+    "\U0001F900-\U0001F9FF"
+    "\U0001FA00-\U0001FA6F"
+    "\U0001FA70-\U0001FAFF"
+    "\U00002702-\U000027B0"
+    "\U0001F170-\U0001F171"
+    "\U0001F17E-\U0001F17F"
+    "\U0001F18E"
+    "\U0001F191-\U0001F19A"
+    "\U0001F1E0-\U0001F1FF"
+    "\U0001F201-\U0001F251"
+    "\U0001F004"
+    "\U0001F0CF"
+    "\U00002600-\U000026FF"
+    "\U00002190-\U000021FF"
+    "\U00002300-\U000023FF"
+    "\U000025A0-\U000025FF"
+    "\U00002B00-\U00002BFF"
+    "\U0001F700-\U0001F77F"
+    "\U0001F780-\U0001F7FF"
+    "\U0001F800-\U0001F8FF"
+    "\uFE00-\uFE0F"
+    "\u20E3"
+    "\u200D"
+    "]+"
+)
+
+# (duplicate declaration removed – user_warnings defined above)
 
 # ---- MAIN GROUP HANDLER ----
 @Client.on_message(filters.group & filters.incoming)
 async def give_filter(client, message):
     if not message.from_user:
         return
-
     chat_id = message.chat.id
     user = message.from_user
     user_id = user.id
 
-    # ---- Detect Violations ----
     text = (message.text or message.caption or "").strip()
     is_forwarded = bool(message.forward_date)
     has_link = bool(LINK_PATTERN.search(text))
+    has_spam_emoji = bool(SPAM_EMOJI_PATTERN.search(text))
 
-    # --- Mention Logic ---
+    # ---- Entity-based Detection ----
+    has_entity_link = False
+    entities = message.entities or message.caption_entities or []
+    for entity in entities:
+        if entity.type.value in ("url", "text_link", "mention", "email", "phone_number"):
+            if entity.type.value == "mention":
+                mention_text = text[entity.offset: entity.offset + entity.length].lstrip("@").lower()
+                if mention_text not in ["admin", "admins"]:
+                    has_entity_link = True
+                    break
+            else:
+                has_entity_link = True
+                break
+
+    # ---- All Button Types Detection ----
+    has_button_link = False
+    if message.reply_markup:
+        try:
+            # ✅ Inline keyboard - URL / callback / switch inline / web app
+            if hasattr(message.reply_markup, "inline_keyboard"):
+                for row in message.reply_markup.inline_keyboard:
+                    for button in row:
+                        if (
+                            button.url
+                            or button.callback_data
+                            or button.switch_inline_query
+                            or isinstance(getattr(button, "web_app", None), WebAppInfo)
+                        ):
+                            has_button_link = True
+                            break
+
+            # ✅ Reply keyboard - text containing links
+            if hasattr(message.reply_markup, "keyboard"):
+                for row in message.reply_markup.keyboard:
+                    for button in row:
+                        btn_text = button if isinstance(button, str) else getattr(button, "text", "")
+                        if LINK_PATTERN.search(btn_text or ""):
+                            has_button_link = True
+                            break
+
+            # ✅ Web App top-level
+            if isinstance(getattr(message.reply_markup, "web_app", None), WebAppInfo):
+                has_button_link = True
+
+        except Exception as e:
+            print(f"Button check error: {e}")
+
+    # ---- Mention Logic ----
     mentions = MENTION_PATTERN.findall(text)
     invalid_mention = any(m.lower() not in ["admin", "admins"] for m in mentions) if mentions else False
 
-    # ---- Combine Violations ----
-    if is_forwarded or has_link or invalid_mention:
-        count = user_warnings.setdefault(chat_id, {}).get(user_id, 0) + 1
-        user_warnings[chat_id][user_id] = count
+    # ---- Combine All Violations ----
+    if is_forwarded or has_link or invalid_mention or has_entity_link or has_button_link or has_spam_emoji:
 
-        await message.delete()
+        # Build human-readable reason string
+        reasons = []
+        if is_forwarded:
+            reasons.append("Forwarded message")
+        if has_link or has_entity_link:
+            reasons.append("Link shared")
+        if has_button_link:
+            reasons.append("Button with link")
+        if invalid_mention:
+            reasons.append("Spam mention")
+        if has_spam_emoji:
+            reasons.append("Spam emoji used")
+        reason_text = ", ".join(reasons)
 
-        if count < 4:
-            reasons = []
-            if is_forwarded:
-                reasons.append("Forwarded message")
-            if has_link:
-                reasons.append("Link shared")
-            if invalid_mention:
-                reasons.append("Spam mentioned")
-            reason_text = ", ".join(reasons)
-            
-            await message.reply_text(
-                f"🚨 **Hello {user.mention}! - Warning {count}/3** ⚠️\n\n"
-                f"❌ **Reason:** {reason_text}\n\n"
-                f"📌 **Note:**\n✅ Spam messages are not allowed.\n✅ Please follow the group rules to avoid further bans."
-            )
+        # ── Persist warning to MongoDB ──────────────────────────
+        count = await add_warning(chat_id, user_id, reason_text)
+
+        # ── Delete the violating message ────────────────────────
+        try:
+            await message.delete()
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
+        except (PeerIdInvalid, Exception) as e:
+            print(f"Delete error: {e}")
+
+        if count <= 3:
+            # ── Warning 1 / 2 / 3 ──────────────────────────────
+            try:
+                await message.reply_text(
+                    f"🚨 **Hello {user.mention}! - Warning {count}/3** ⚠️\n\n"
+                    f"❌ **Reason:** {reason_text}\n\n"
+                    f"📌 **Note:**\n"
+                    f"✅ Spam messages are not allowed.\n"
+                    f"✅ You will be **permanently banned** after 3 warnings."
+                )
+            except (FloodWait, MessageNotModified, PeerIdInvalid) as e:
+                print(f"Warning message error: {e}")
+
         else:
+            # ── 4th violation → Lifetime Ban ───────────────────
             try:
                 await client.ban_chat_member(chat_id, user_id)
+                await reset_warnings(chat_id, user_id)   # clear DB record after ban
+
                 await message.reply_text(
-                    f"🚨 **Hello {user.mention}! - Ban Alert** ⚠️\n\n"
-                    f"❌ You have reached already **3 Warnings**.\n\n"
-                    f"🚫 You are now **Banned** from the group."
+                    f"🚫 **{user.mention} has been permanently banned!**\n\n"
+                    f"❌ Reason: Repeated spam violations (3 warnings exceeded)."
                 )
-                user_warnings[chat_id].pop(user_id, None)
+
                 if LOG_CHANNEL:
+                    import pytz
+                    from datetime import datetime
+                    ist = pytz.timezone('Asia/Kolkata')
+                    ban_time = datetime.now(ist).strftime("%d %b %Y, %I:%M:%S %p")
                     await client.send_message(
                         LOG_CHANNEL,
-                        f"🚷 **User Banned**\n\n"
+                        f"🚷 **User Permanently Banned**\n\n"
                         f"👤 Name: {user.mention}\n"
                         f"🆔 ID: `{user_id}`\n"
-                        f"📍 Chat ID: `{chat_id}`\n"
-                        f"❌ Reason: Mention/link/forward violations (4 warnings)"
+                        f"📍 Chat: `{chat_id}`\n"
+                        f"⏰ Time: `{ban_time} IST`\n"
+                        f"❌ Reason: 3 spam warnings exceeded"
                     )
+
+            except FloodWait as e:
+                await asyncio.sleep(e.value)
+            except UserIsBlocked:
+                print(f"User {user_id} has blocked the bot")
+            except PeerIdInvalid:
+                print(f"Invalid peer: {user_id}")
+            except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty) as e:
+                print(f"Media error: {e}")
             except Exception as e:
                 print(f"Ban error: {e}")
+
         return
 
     # ---- Force Subscribe ----

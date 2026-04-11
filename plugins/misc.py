@@ -4,6 +4,7 @@ from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant, Media
 from info import IMDB_TEMPLATE
 from utils import extract_user, get_file_id, get_poster, last_online 
 from datetime import datetime
+import pytz
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 logger = logging.getLogger(__name__)
@@ -84,9 +85,11 @@ async def who_is(client, message):
     if message.chat.type in ((enums.ChatType.SUPERGROUP, enums.ChatType.CHANNEL)):
         try:
             chat_member_p = await message.chat.get_member(from_user.id)
-            joined_date = (
-                chat_member_p.joined_date or datetime.now()
-            ).strftime("%Y.%m.%d %H:%M:%S")
+            ist = pytz.timezone('Asia/Kolkata')
+            raw_date = chat_member_p.joined_date or datetime.now(ist)
+            if raw_date.tzinfo is None:
+                raw_date = ist.localize(raw_date)
+            joined_date = raw_date.astimezone(ist).strftime("%d %b %Y, %I:%M:%S %p")
             message_out_str += (
                 "<b>➲Joined this Chat on:</b> <code>"
                 f"{joined_date}"

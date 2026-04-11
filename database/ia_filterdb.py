@@ -7,8 +7,9 @@ from pymongo.errors import DuplicateKeyError
 from umongo import Instance, Document, fields
 from motor.motor_asyncio import AsyncIOMotorClient
 from marshmallow.exceptions import ValidationError
-from info import FILE_DB_URI, DATABASE_NAME, COLLECTION_NAME, USE_CAPTION_FILTER, MAX_B_TN, FILTER_KEYWORDS
-from utils import get_settings, save_group_settings
+from info import FILE_DB_URI, DATABASE_NAME, COLLECTION_NAME, USE_CAPTION_FILTER, MAX_B_TN
+from utils import get_settings, save_group_settings, temp
+from database.size_filter_db import matches_size_rule
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -55,8 +56,13 @@ async def save_file(media):
         return False, 2
 
     # Check if any keyword is present in the file name or caption
-    if any(keyword in (file_name + (file.caption or "")).lower() for keyword in FILTER_KEYWORDS):
-        logger.warning(f"Skipping file '{file_name}' due to filter.")
+    if any(keyword in (file_name + (file.caption or "")).lower() for keyword in temp.FILTER_KEYWORDS):
+        logger.warning(f"Skipping file '{file_name}' due to keyword filter.")
+        return False, 0
+
+    # Check if file size matches any active size filter rule
+    if matches_size_rule(media.file_size):
+        logger.warning(f"Skipping file '{file_name}' (size {media.file_size} bytes) due to size filter.")
         return False, 0
     try:
         await file.commit()
