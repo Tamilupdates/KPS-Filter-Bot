@@ -1,3 +1,4 @@
+import os
 import re, math, logging, secrets, mimetypes, time
 from info import *
 from aiohttp import web
@@ -13,7 +14,13 @@ routes = web.RouteTableDef()
 
 @routes.get("/", allow_head=True)
 async def root_route_handler(request):
-    return web.json_response("FilterBot")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    html_file = os.path.join(current_dir, "landing.html")
+
+    with open(html_file, "r", encoding="utf-8") as f:
+        html = f.read()
+
+    return web.Response(text=html, content_type="text/html")
 
 @routes.get(r"/watch/{path:\S+}", allow_head=True)
 async def stream_handler(request: web.Request):
