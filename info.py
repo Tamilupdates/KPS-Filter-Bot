@@ -85,7 +85,15 @@ PUBLIC_FILE_CHANNEL = environ.get('PUBLIC_FILE_CHANNEL', '') # Public Channel Us
 GRP_LNK = environ.get('GRP_LNK', 'https://t.me/vj_bot_disscussion')
 CHNL_LNK = environ.get('CHNL_LNK', 'https://t.me/vj_bots')
 TUTORIAL = environ.get('TUTORIAL', 'https://t.me/How_To_Open_Linkl')
-SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'vj_bot_disscussion') # Support Chat Link Without https:// or @
+support_chat = environ.get('SUPPORT_CHAT', 'https://t.me/vj_bot_disscussion') # Support with https:// or @
+if support_chat.startswith(('https://', 'http://', 'tg://')):
+    SUPPORT_CHAT = support_chat
+elif support_chat.startswith('t.me/'):
+    SUPPORT_CHAT = f'https://{support_chat}'
+elif support_chat.startswith('@'):
+    SUPPORT_CHAT = f'https://t.me/{support_chat[1:]}'
+else:
+    SUPPORT_CHAT = f'https://t.me/{support_chat}' if support_chat else 'https://t.me/vj_bot_disscussion'
 
 # True Or False
 AI_SPELL_CHECK = bool(environ.get('AI_SPELL_CHECK', True))
